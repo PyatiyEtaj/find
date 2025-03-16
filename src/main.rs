@@ -88,135 +88,47 @@ impl Envs {
     }
 }
 
-struct TreeInfo {
-    name: String,
-}
+fn initialize_search<F1: Fn(&String), F2: Fn(&String)>(
+    full_path: &String,
+    on_file: &F1,
+    on_dir: &F2,
+) -> io::Result<()> {
+    let read_result = fs::read_dir(full_path);
 
-struct TreeDir {
-    me: TreeInfo,
-    sub_dirs: Vec<Box<TreeDir>>,
-    files: Vec<TreeInfo>,
-}
-
-impl TreeDir {
-    pub fn new(path: String) -> Self {
-        TreeDir {
-            me: TreeInfo { name: path },
-            files: Vec::new(),
-            sub_dirs: Vec::new(),
+    let dir = match read_result {
+        Ok(dir) => dir,
+        Err(msg) => {
+            println!("{:?} err={:?}", full_path, msg);
+            return Ok(());
         }
-    }
+    };
 
-    fn initialize_path(&mut self) -> io::Result<()> {
-        self._initialize_path(self.me.name.clone())
-    }
-
-    fn _initialize_path(&mut self, full_path: String) -> io::Result<()> {
-        let read_result = fs::read_dir(&full_path);
-
-        let dir = match read_result {
-            Ok(dir) => dir,
-            Err(msg) => {
-                print!("{:?}", msg);
-                return Ok(());
-            }
+    for info_dir in dir {
+        let information = match info_dir {
+            Ok(information) => information,
+            Err(_) => continue,
         };
 
-        for info_dir in dir {
-            let information = match info_dir {
-                Ok(information) => information,
-                Err(_) => continue,
-            };
-
-            let file_type = match information.file_type() {
-                Ok(file_type) => file_type,
-                Err(_) => continue,
-            };
-
-            let file_name = match information.file_name().into_string() {
-                Ok(n) => n,
-                Err(_) => continue,
-            };
-
-            if file_type.is_file() {
-                self.files.push(TreeInfo { name: file_name });
-            } else if file_type.is_dir() {
-                let tree = TreeDir::new(file_name);
-                self.sub_dirs.push(Box::new(tree));
-            }
-        }
-
-        for dir in &mut self.sub_dirs {
-            let name = dir.me.name.clone();
-            dir._initialize_path(format!("{full_path}/{name}"))?;
-        }
-
-        Ok(())
-    }
-
-    fn _to_string(&self, offset: usize) {
-        let mut draw = "".to_string();
-
-        let mut prefix = String::with_capacity(offset);
-        for _i in 0..offset {
-            prefix.push_str("-");
-        }
-
-        draw.push_str(prefix.as_str());
-        draw.push_str(">[d] ");
-        draw.push_str(self.me.name.as_str());
-        draw.push_str("\n");
-
-        for file in &self.files {
-            draw.push_str(prefix.as_str());
-            draw.push_str("[f] ");
-            draw.push_str(file.name.as_str());
-            draw.push_str("\n");
-        }
-
-        print!("{}", draw);
-
-        draw.clear();
-
-        for dir in &self.sub_dirs {
-            dir._to_string(offset + 2);
-        }
-    }
-
-    pub fn to_string(&self) {
-        self._to_string(0);
-    }
-}
-
-fn find(pe: &Envs, tree: &TreeDir) {
-    for file in &tree.files {
-        if file.name.contains(&pe.search.value) {
-            println!(
-                "[dir {}] search for {} successed in files",
-                tree.me.name, pe.search.value
-            );
-            return;
-        }
-    }
-
-    for dir in &tree.sub_dirs {
-        let is_any = match &pe.search.env_type {
-            EnvType::Search(node_type) => *node_type != NodeType::File,
-            _ => true,
+        let file_type = match information.file_type() {
+            Ok(file_type) => file_type,
+            Err(_) => continue,
         };
 
-        if is_any {
-            if dir.me.name.contains(&pe.search.value) {
-                println!(
-                    "[dir {}] search for {} successed in sub dirs",
-                    tree.me.name, pe.search.value
-                );
-                return;
-            }
-        }
+        let file_name = match information.file_name().into_string() {
+            Ok(n) => n,
+            Err(_) => continue,
+        };
+        let full_path = &format!("{full_path}/{file_name}");
 
-        find(pe, dir);
+        if file_type.is_file() {
+            on_file(full_path);
+        } else if file_type.is_dir() {
+            on_dir(full_path);
+            initialize_search(full_path, on_file, on_dir)?;
+        }
     }
+
+    Ok(())
 }
 
 fn main() -> io::Result<()> {
@@ -250,18 +162,30 @@ fn main() -> io::Result<()> {
         }
     }
 
-    println!("path={} search={}", program_envs.path.value, program_envs.search.value);
+    println!(
+        "path={} search={}",
+        program_envs.path.value, program_envs.search.value
+    );
 
-    let mut tree = TreeDir::new(program_envs.path.value.clone());
-    tree.initialize_path()?;
+    initialize_search(
+        &program_envs.path.value,
+        &|file| {
+            if file.contains(&program_envs.search.value) {
+                println!("{:?}", file);
+            };
+        },
+        &|dir| {
+            if dir.contains(&program_envs.search.value) {
+                println!("{:?}", dir);
+            };
+        },
+    )?;
     //tree.to_string();
     let init_end_time = start_time.elapsed();
     println!("-- inited took {} ms --", init_end_time.as_millis());
 
     let mut input = String::new();
     io::stdin().read_line(&mut input)?;
-
-    find(&program_envs, &tree);
 
     Ok(())
 }
