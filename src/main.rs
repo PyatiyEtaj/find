@@ -171,12 +171,12 @@ fn main() -> io::Result<()> {
         &program_envs.path.value,
         &|file| {
             if file.contains(&program_envs.search.value) {
-                println!("{:?}", file);
+                println!("{}", file);
             };
         },
         &|dir| {
             if dir.contains(&program_envs.search.value) {
-                println!("{:?}", dir);
+                println!("{}", dir);
             };
         },
     )?;
