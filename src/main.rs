@@ -1,8 +1,6 @@
-use std::{
-    fs::{self, File},
-    io,
-};
+use std::{fs, io, time::Instant};
 
+#[derive(PartialEq)]
 enum NodeType {
     Dir,
     File,
@@ -23,7 +21,11 @@ struct EnvArg {
 
 fn new_env_arg(string: &String) -> Result<EnvArg, String> {
     if !string.starts_with("-") && !string.starts_with("--") {
-        return Err("must started with - or --".to_string());
+        return Ok(EnvArg {
+            env_type: EnvType::None,
+            name: "".to_string(),
+            value: "".to_string(),
+        });
     }
 
     let pos_of = match string.find("=") {
@@ -110,8 +112,6 @@ impl TreeDir {
     }
 
     fn _initialize_path(&mut self, full_path: String) -> io::Result<()> {
-        dbg!(&full_path);
-
         let read_result = fs::read_dir(&full_path);
 
         let dir = match read_result {
@@ -188,15 +188,47 @@ impl TreeDir {
     }
 }
 
-fn find(pe: &Envs, tree: &TreeDir)
-{
+fn find(pe: &Envs, tree: &TreeDir) {
+    for file in &tree.files {
+        if file.name.contains(&pe.search.value) {
+            println!(
+                "[dir {}] search for {} successed in files",
+                tree.me.name, pe.search.value
+            );
+            return;
+        }
+    }
+
+    for dir in &tree.sub_dirs {
+        let is_any = match &pe.search.env_type {
+            EnvType::Search(node_type) => *node_type != NodeType::File,
+            _ => true,
+        };
+
+        if is_any {
+            if dir.me.name.contains(&pe.search.value) {
+                println!(
+                    "[dir {}] search for {} successed in sub dirs",
+                    tree.me.name, pe.search.value
+                );
+                return;
+            }
+        }
+
+        find(pe, dir);
+    }
 }
 
 fn main() -> io::Result<()> {
-    let words = vec![
-        "--path=.".to_string(),
-        "--search=libfile-ff7444b4ac3395ea.rmeta".to_string(),
-    ];
+    let words: Vec<String> = std::env::args().map(|e| e).collect();
+
+    // let words = vec![
+    //     "--path=.".to_string(),
+    //     "--search=libfile-ff7444b4ac3395ea.rmeta".to_string(),
+    // ];
+
+    let start_time = Instant::now();
+
     let mut program_envs = Envs {
         path: EnvArg::new(),
         search: EnvArg::new(),
@@ -218,11 +250,18 @@ fn main() -> io::Result<()> {
         }
     }
 
-    let mut tree = TreeDir::new(program_envs.path.value);
+    println!("path={} search={}", program_envs.path.value, program_envs.search.value);
+
+    let mut tree = TreeDir::new(program_envs.path.value.clone());
     tree.initialize_path()?;
-    tree.to_string();
+    //tree.to_string();
+    let init_end_time = start_time.elapsed();
+    println!("-- inited took {} ms --", init_end_time.as_millis());
 
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
 
+    find(&program_envs, &tree);
 
     Ok(())
 }
