@@ -131,6 +131,8 @@ fn main() -> io::Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::RefCell;
+
     use crate::{initialize_search, Envs};
 
     fn get_env_1() -> Vec<String>{
@@ -172,15 +174,19 @@ mod tests {
         let program_envs_result = Envs::new(&words);
         assert!(program_envs_result.is_ok());
         let env = program_envs_result .unwrap();
+        let has_been_found = RefCell::new(false);
 
         initialize_search(
             &env.start_path,
-            &|file, is_dir| {
+            &mut |file, is_dir| {
                 if file.contains(&env.pattern) {
                     assert_eq!(*file, r"./src/main.rs".to_string());
                     assert_eq!(is_dir, false);
+                    has_been_found.replace(true);
                 };
             }
         ).unwrap();
+
+        assert!(has_been_found.take())
     }
 }
