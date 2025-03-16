@@ -1,0 +1,1 @@
+find pattern (--path=some/path, --interactive, --line=10)
