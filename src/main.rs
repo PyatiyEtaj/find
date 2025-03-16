@@ -182,10 +182,7 @@ fn main() -> io::Result<()> {
     )?;
     //tree.to_string();
     let init_end_time = start_time.elapsed();
-    println!("-- inited took {} ms --", init_end_time.as_millis());
-
-    let mut input = String::new();
-    io::stdin().read_line(&mut input)?;
+    println!("took {} ms", init_end_time.as_millis());
 
     Ok(())
 }
