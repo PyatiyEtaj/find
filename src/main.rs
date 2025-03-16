@@ -1,4 +1,11 @@
-use std::{fs, io, time::Instant};
+use std::{
+    fs::{self, File},
+    io::{self, BufRead, Read, Seek, Write},
+    str::FromStr,
+    string,
+    sync::{Arc, Mutex},
+    time::Instant,
+};
 
 struct Envs {
     pattern: String,
@@ -8,16 +15,18 @@ struct Envs {
 }
 
 impl Envs {
-    fn new(words: &Vec<String>) -> Result<Envs, &str> {
+    fn new(words: &Vec<String>) -> Result<Envs, String> {
         if words.len() < 2 {
-            return Err("must be at least 1 arg regex pattern or --interactive [--line]");
+            return Err(
+                "must be at least 1 arg regex pattern or --interactive [--line]".to_string(),
+            );
         }
 
         let mut result = Envs {
             interactive: false,
             max_output_lines: -1,
             pattern: String::new(),
-            start_path: ".".to_string()
+            start_path: ".".to_string(),
         };
 
         for i in 1..words.len() {
@@ -30,8 +39,7 @@ impl Envs {
                 };
             } else if words[i].starts_with("--path=") {
                 result.start_path = String::from(&words[i]["--path=".len()..]);
-            }
-            else {
+            } else {
                 result.pattern.push_str(words[i].as_str());
                 result.pattern.push_str(" ");
             }
@@ -39,13 +47,13 @@ impl Envs {
         result.pattern = String::from(result.pattern.trim());
 
         if result.pattern.len() < 1 && !result.interactive {
-            return Err("cant find any pattern");
+            return Err("cant find any pattern".to_string());
         }
 
         Ok(result)
     }
 
-    fn to_string(&self) -> String{
+    fn to_string(&self) -> String {
         let mut str = String::new();
         str.push_str(format!("interactive: '{}' | ", self.interactive).as_str());
         str.push_str(format!("line: '{}' | ", self.max_output_lines).as_str());
@@ -56,10 +64,78 @@ impl Envs {
     }
 }
 
-fn initialize_search<F: Fn(&String, bool)>(
-    full_path: &String,
-    on_find: &F
-) -> io::Result<()> {
+struct TempFile {
+    name: String,
+    f: File,
+}
+
+enum FindResult {
+    Ok(String),
+    Error(String),
+    None,
+}
+
+impl TempFile {
+    fn new() -> Result<TempFile, String> {
+        let dir = std::env::temp_dir();
+
+        let temp_file_path = &std::path::Path::new(dir.as_os_str()).join("find.txt");
+
+        let f = match std::fs::File::create(temp_file_path) {
+            Ok(f) => f,
+            Err(_) => return Err("cant create temp file".to_string()),
+        };
+
+        Ok(TempFile {
+            name: String::from(temp_file_path.to_str().unwrap()),
+            f: f,
+        })
+    }
+
+    fn find(&mut self, pattern: &String, seek_from_start: Option<bool>) -> FindResult {
+        let seek = match seek_from_start {
+            Some(v) => {
+                if v {
+                    io::SeekFrom::Start(0)
+                } else {
+                    io::SeekFrom::Current(0)
+                }
+            }
+            None => io::SeekFrom::Current(0),
+        };
+
+        match self.f.seek(seek) {
+            Ok(_) => {}
+            Err(err) => return FindResult::Error(err.to_string()),
+        };
+
+        const SIZE: usize = 128 * 1024;
+
+        let mut buf = vec![0; SIZE];
+
+        let read = match self.f.read(&mut buf) {
+            Ok(read) => read,
+            Err(err) => {
+                return FindResult::Error(err.to_string());
+            }
+        };
+
+        let str = match String::from_utf8(buf) {
+            Ok(str) => str,
+            Err(err) => {
+                return FindResult::Error(err.to_string())
+            }
+        };
+
+        
+
+        //reader.lines().take(n)
+
+        FindResult::None
+    }
+}
+
+fn initialize_search<F: Fn(&String, bool)>(full_path: &String, on_find: &F) -> io::Result<()> {
     let read_result = fs::read_dir(full_path);
 
     let dir = match read_result {
@@ -113,18 +189,35 @@ fn main() -> io::Result<()> {
 
     println!("envs: {:?}", program_envs.to_string());
 
-    initialize_search(
-        &program_envs.start_path,
-        &|file, is_dir| {
-            if file.contains(&program_envs.pattern) {
-                println!("{}", file);
-            };
+    let tf = match TempFile::new() {
+        Ok(f) => f,
+        Err(err) => {
+            println!("[ERR] {}", err);
+            return Ok(());
         }
-    )?;
+    };
+
+    let arc_tf = Arc::new(Mutex::new(tf));
+
+    initialize_search(&program_envs.start_path, &mut |node_name, is_dir| {
+        arc_tf
+            .lock()
+            .unwrap()
+            .f
+            .write_fmt(format_args!("{}\n", node_name))
+            .unwrap();
+        if node_name.contains(&program_envs.pattern) {
+            println!("{}", node_name);
+        };
+    })?;
 
     let init_end_time = start_time.elapsed();
 
-    println!("took {} ms", init_end_time.as_millis());
+    println!(
+        "took {} ms | temp {}",
+        init_end_time.as_millis(),
+        arc_tf.lock().unwrap().name
+    );
 
     Ok(())
 }
@@ -133,9 +226,9 @@ fn main() -> io::Result<()> {
 mod tests {
     use std::cell::RefCell;
 
-    use crate::{initialize_search, Envs};
+    use crate::{initialize_search, Envs, TempFile};
 
-    fn get_env_1() -> Vec<String>{
+    fn get_env_1() -> Vec<String> {
         vec![
             r".\projects\file\file\target\release\file.exe".to_string(),
             r"'some pattern .*".to_string(),
@@ -143,8 +236,8 @@ mod tests {
             r"--line=10".to_string(),
         ]
     }
-    
-    fn get_env_2() -> Vec<String>{
+
+    fn get_env_2() -> Vec<String> {
         vec![
             r".\projects\file\file\target\release\file.exe".to_string(),
             r"main.rs".to_string(),
@@ -159,7 +252,7 @@ mod tests {
         let program_envs_result = Envs::new(&words);
 
         assert!(program_envs_result.is_ok());
-        let env = program_envs_result .unwrap();
+        let env = program_envs_result.unwrap();
 
         assert_eq!(env.pattern, "'some pattern .*".to_string());
         assert_eq!(env.start_path, r".\some\dir".to_string());
@@ -168,25 +261,28 @@ mod tests {
     }
 
     #[test]
-    fn search_pattern_test(){
+    fn search_pattern_test() {
         let words = get_env_2();
 
         let program_envs_result = Envs::new(&words);
         assert!(program_envs_result.is_ok());
-        let env = program_envs_result .unwrap();
+        let env = program_envs_result.unwrap();
         let has_been_found = RefCell::new(false);
 
-        initialize_search(
-            &env.start_path,
-            &mut |file, is_dir| {
-                if file.contains(&env.pattern) {
-                    assert_eq!(*file, r"./src/main.rs".to_string());
-                    assert_eq!(is_dir, false);
-                    has_been_found.replace(true);
-                };
-            }
-        ).unwrap();
+        initialize_search(&env.start_path, &mut |file, is_dir| {
+            if file.contains(&env.pattern) {
+                assert_eq!(*file, r"./src/main.rs".to_string());
+                assert_eq!(is_dir, false);
+                has_been_found.replace(true);
+            };
+        })
+        .unwrap();
 
         assert!(has_been_found.take())
+    }
+
+    #[test]
+    fn temp_file_test() {
+        let file = TempFile::new();
     }
 }
