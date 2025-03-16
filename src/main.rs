@@ -1,97 +1,64 @@
 use std::{fs, io, time::Instant};
 
-#[derive(PartialEq)]
-enum NodeType {
-    Dir,
-    File,
-    Any,
-}
-
-enum EnvType {
-    Path,
-    Search(NodeType),
-    None,
-}
-
-struct EnvArg {
-    name: String,
-    value: String,
-    env_type: EnvType,
-}
-
-fn new_env_arg(string: &String) -> Result<EnvArg, String> {
-    if !string.starts_with("-") && !string.starts_with("--") {
-        return Ok(EnvArg {
-            env_type: EnvType::None,
-            name: "".to_string(),
-            value: "".to_string(),
-        });
-    }
-
-    let pos_of = match string.find("=") {
-        None => return Err("must contain =".to_string()),
-        Some(x) => x,
-    };
-
-    let (env_name, value) = string.split_at(pos_of);
-
-    let mut arg = EnvArg {
-        name: env_name.to_string(),
-        value: value[1..].to_string(),
-        env_type: EnvType::None,
-    };
-
-    arg.resolve_type();
-
-    Ok(arg)
-}
-
-impl EnvArg {
-    pub fn resolve_type(self: &mut Self) -> bool {
-        if self.name.starts_with("--path") || self.name.starts_with("-p") {
-            self.env_type = EnvType::Path;
-            return true;
-        } else if self.name.starts_with("--search") || self.name.starts_with("-s") {
-            let t = if self.value.contains(".") {
-                NodeType::File
-            } else {
-                NodeType::Any
-            };
-            self.env_type = EnvType::Search(t);
-            return true;
-        }
-
-        false
-    }
-
-    pub fn new() -> Self {
-        EnvArg {
-            env_type: EnvType::None,
-            name: "".to_string(),
-            value: "".to_string(),
-        }
-    }
-}
-
 struct Envs {
-    path: EnvArg,
-    search: EnvArg,
+    pattern: String,
+    max_output_lines: i32,
+    interactive: bool,
+    start_path: String,
 }
 
 impl Envs {
-    pub fn init(self: &mut Self, arg: EnvArg) {
-        match arg.env_type {
-            EnvType::Path => self.path = arg,
-            EnvType::Search(_) => self.search = arg,
-            EnvType::None => {}
+    fn new(words: &Vec<String>) -> Result<Envs, &str> {
+        if words.len() < 2 {
+            return Err("must be at least 1 arg regex pattern or --interactive [--line]");
         }
+
+        let mut result = Envs {
+            interactive: false,
+            max_output_lines: -1,
+            pattern: String::new(),
+            start_path: ".".to_string()
+        };
+
+        for i in 1..words.len() {
+            if words[i].starts_with("--interactive") {
+                result.interactive = true;
+            } else if words[i].starts_with("--line=") {
+                result.max_output_lines = match words[i]["--line=".len()..].parse::<i32>() {
+                    Ok(value) => value,
+                    Err(_) => -1,
+                };
+            } else if words[i].starts_with("--path=") {
+                result.start_path = String::from(&words[i]["--path=".len()..]);
+            }
+            else {
+                result.pattern.push_str(words[i].as_str());
+                result.pattern.push_str(" ");
+            }
+        }
+        result.pattern = String::from(result.pattern.trim());
+
+        if result.pattern.len() < 1 && !result.interactive {
+            return Err("cant find any pattern");
+        }
+
+        Ok(result)
+    }
+
+    fn to_string(&self) -> String{
+        let mut str = String::new();
+        str.push_str(format!("interactive: '{}' | ", self.interactive).as_str());
+        str.push_str(format!("line: '{}' | ", self.max_output_lines).as_str());
+        str.push_str(format!("pattern: '{}' | ", self.pattern).as_str());
+        str.push_str(format!("start-path: '{}'", self.start_path).as_str());
+
+        str
     }
 }
 
-fn initialize_search<F1: Fn(&String), F2: Fn(&String)>(
+fn initialize_search<F: Fn(&String, bool)>(
     full_path: &String,
-    on_file: &F1,
-    on_dir: &F2,
+    on_find: &F
 ) -> io::Result<()> {
     let read_result = fs::read_dir(full_path);
 
@@ -121,10 +88,10 @@ fn initialize_search<F1: Fn(&String), F2: Fn(&String)>(
         let full_path = &format!("{full_path}/{file_name}");
 
         if file_type.is_file() {
-            on_file(full_path);
+            on_find(full_path, false);
         } else if file_type.is_dir() {
-            on_dir(full_path);
-            initialize_search(full_path, on_file, on_dir)?;
+            on_find(full_path, true);
+            initialize_search(full_path, on_find)?;
         }
     }
 
@@ -134,55 +101,86 @@ fn initialize_search<F1: Fn(&String), F2: Fn(&String)>(
 fn main() -> io::Result<()> {
     let words: Vec<String> = std::env::args().map(|e| e).collect();
 
-    // let words = vec![
-    //     "--path=.".to_string(),
-    //     "--search=libfile-ff7444b4ac3395ea.rmeta".to_string(),
-    // ];
-
     let start_time = Instant::now();
 
-    let mut program_envs = Envs {
-        path: EnvArg::new(),
-        search: EnvArg::new(),
+    let program_envs = match Envs::new(&words) {
+        Ok(res) => res,
+        Err(err) => {
+            println!("[ERR] {}", err);
+            return Ok(());
+        }
     };
 
-    for word in words {
-        let res = new_env_arg(&word);
-
-        match res {
-            Ok(mut v) => {
-                if v.resolve_type() {
-                    program_envs.init(v);
-                }
-            }
-            Err(e) => {
-                println!("error parsing header '{word}': {e}");
-                return Ok(());
-            }
-        }
-    }
-
-    println!(
-        "path={} search={}",
-        program_envs.path.value, program_envs.search.value
-    );
+    println!("envs: {:?}", program_envs.to_string());
 
     initialize_search(
-        &program_envs.path.value,
-        &|file| {
-            if file.contains(&program_envs.search.value) {
+        &program_envs.start_path,
+        &|file, is_dir| {
+            if file.contains(&program_envs.pattern) {
                 println!("{}", file);
             };
-        },
-        &|dir| {
-            if dir.contains(&program_envs.search.value) {
-                println!("{}", dir);
-            };
-        },
+        }
     )?;
-    //tree.to_string();
+
     let init_end_time = start_time.elapsed();
+
     println!("took {} ms", init_end_time.as_millis());
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{initialize_search, Envs};
+
+    fn get_env_1() -> Vec<String>{
+        vec![
+            r".\projects\file\file\target\release\file.exe".to_string(),
+            r"'some pattern .*".to_string(),
+            r"--path=.\some\dir".to_string(),
+            r"--line=10".to_string(),
+        ]
+    }
+    
+    fn get_env_2() -> Vec<String>{
+        vec![
+            r".\projects\file\file\target\release\file.exe".to_string(),
+            r"main.rs".to_string(),
+            r"--path=.".to_string(),
+        ]
+    }
+
+    #[test]
+    fn parsing_envs_test() {
+        let words = get_env_1();
+
+        let program_envs_result = Envs::new(&words);
+
+        assert!(program_envs_result.is_ok());
+        let env = program_envs_result .unwrap();
+
+        assert_eq!(env.pattern, "'some pattern .*".to_string());
+        assert_eq!(env.start_path, r".\some\dir".to_string());
+        assert_eq!(env.interactive, false);
+        assert_eq!(env.max_output_lines, 10);
+    }
+
+    #[test]
+    fn search_pattern_test(){
+        let words = get_env_2();
+
+        let program_envs_result = Envs::new(&words);
+        assert!(program_envs_result.is_ok());
+        let env = program_envs_result .unwrap();
+
+        initialize_search(
+            &env.start_path,
+            &|file, is_dir| {
+                if file.contains(&env.pattern) {
+                    assert_eq!(*file, r"./src/main.rs".to_string());
+                    assert_eq!(is_dir, false);
+                };
+            }
+        ).unwrap();
+    }
 }
