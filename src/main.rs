@@ -3,7 +3,7 @@ use std::{
     fs::{self, File},
     io::{self, Read, Seek, Write},
     sync::{
-        atomic::{AtomicI32, Ordering},
+        atomic::{AtomicBool, AtomicI32, Ordering},
         Arc, Mutex,
     },
 };
@@ -81,7 +81,7 @@ struct TempFile {
 
 impl Drop for TempFile {
     fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.name);
+        //let _ = std::fs::remove_file(&self.name);
     }
 }
 
@@ -264,24 +264,27 @@ impl Mode {
 
     fn find_pattern(tf: &mut TempFile, pattern: &String, program_envs: &Envs) {
         tf.refresh();
-        let search = RefCell::new(true);
+        let search = AtomicBool::new(true);
         let found = AtomicI32::new(0);
-        while search.take() {
+        while search.load(Ordering::Relaxed) {
             let find_result = tf.find(&pattern, &|f| {
                 let prev = found.fetch_add(1, Ordering::Relaxed);
                 if program_envs.max_output_lines < 0
-                    || found.load(Ordering::Relaxed) < program_envs.max_output_lines
+                    || found.load(Ordering::Relaxed) <= program_envs.max_output_lines
                 {
                     println!("{}) {}", prev + 1, f);
-                    search.replace(false);
                 }
             });
+
+            if found.load(Ordering::Relaxed) >= program_envs.max_output_lines {
+                search.store(false, Ordering::Relaxed);
+            }
 
             match find_result {
                 FindResult::Error(err) => println!("[ERR] cant read; err={}", err.to_string()),
                 FindResult::Read => {}
                 FindResult::Eof => {
-                    search.replace(false);
+                    search.store(false, Ordering::Relaxed);
                 }
             }
         }
@@ -302,7 +305,7 @@ impl Mode {
                 return Ok(());
             }
         };
-        
+
         let start = std::time::Instant::now();
         Mode::interactive_init(&tf, &program_envs);
         println!("temp file: {} / took {} ms", tf.name, start.elapsed().as_millis());
@@ -321,9 +324,9 @@ impl Mode {
 }
 
 fn main() -> io::Result<()> {
-    //let words: Vec<String> = std::env::args().map(|e| e).collect();
+    let words: Vec<String> = std::env::args().map(|e| e).collect();
 
-    let words: Vec<String> = vec!["1".to_string(), "--interactive".to_string()];
+    //let words: Vec<String> = vec!["1".to_string(), "--interactive".to_string()];
 
     let program_envs = match Envs::new(&words) {
         Ok(res) => res,
