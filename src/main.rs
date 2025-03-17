@@ -62,11 +62,6 @@ impl Envs {
     }
 }
 
-struct TempFile {
-    name: String,
-    f: File,
-    seek: u64,
-}
 
 #[derive(PartialEq)]
 enum FindResult {
@@ -75,21 +70,41 @@ enum FindResult {
     Eof,
 }
 
+struct TempFile {
+    name: String,
+    write: Option<File>,
+    read: File,
+    read_seek: u64,
+}
+
+impl Drop for TempFile {
+    fn drop(&mut self) { 
+        let _ = std::fs::remove_file(&self.name);
+        println!("> bb gandon <");
+    }
+}
+
 impl TempFile {
     fn new() -> Result<TempFile, String> {
         let dir = std::env::temp_dir();
 
         let temp_file_path = &std::path::Path::new(dir.as_os_str()).join("find.txt");
 
-        let f = match std::fs::File::create(temp_file_path) {
+        let to_write = match std::fs::File::create(temp_file_path) {
             Ok(f) => f,
-            Err(_) => return Err("cant create temp file".to_string()),
+            Err(_) => return Err("cant create write-only temp file".to_string()),
+        };
+
+        let to_read = match std::fs::File::open(temp_file_path) {
+            Ok(f) => f,
+            Err(_) => return Err("cant open temp file as read-only".to_string()),
         };
 
         Ok(TempFile {
             name: String::from(temp_file_path.to_str().unwrap()),
-            f: f,
-            seek: 0,
+            write: Some(to_write),
+            read: to_read,
+            read_seek: 0,
         })
     }
 
@@ -98,22 +113,23 @@ impl TempFile {
 
         let f = match std::fs::File::open(temp_file_path) {
             Ok(f) => f,
-            Err(_) => return Err("cant create temp file".to_string()),
+            Err(_) => return Err("cant open read-only temp file".to_string()),
         };
 
         Ok(TempFile {
             name: String::from(temp_file_path.to_str().unwrap()),
-            f: f,
-            seek: 0,
+            write: None,
+            read: f,
+            read_seek: 0,
         })
     }
 
     fn refresh(&mut self) {
-        self.seek = 0;
+        self.read_seek = 0;
     }
 
     fn find<F: Fn(&String)>(&mut self, pattern: &String, on_find: &F) -> FindResult {
-        match self.f.seek(io::SeekFrom::Start(self.seek)) {
+        match self.read.seek(io::SeekFrom::Start(self.read_seek)) {
             Ok(_) => {}
             Err(err) => return FindResult::Error(err.to_string()),
         };
@@ -122,9 +138,9 @@ impl TempFile {
 
         let mut buf = vec![0; SIZE];
 
-        match self.f.read(&mut buf) {
+        match self.read.read(&mut buf) {
             Ok(read) => {
-                self.seek += read as u64;
+                self.read_seek += read as u64;
                 if read < 1 {
                     return FindResult::Eof;
                 }
@@ -151,7 +167,7 @@ impl TempFile {
         }
 
         if last.len() > 0 && !last.ends_with('\0') && !last.ends_with('\n') {
-            self.seek -= last.len() as u64;
+            self.read_seek -= last.len() as u64;
         }
 
         FindResult::Read
@@ -200,7 +216,7 @@ fn initialize_search<F: Fn(&String, bool)>(full_path: &String, on_find: &F) -> i
 struct Mode {}
 
 impl Mode {
-    fn straight(program_envs: Envs) -> io::Result<()> {
+    pub fn straight(program_envs: Envs) -> io::Result<()> {
         initialize_search(&program_envs.start_path, &mut |node_name, _| {
             if node_name.contains(&program_envs.pattern) {
                 println!("{}", node_name);
@@ -210,8 +226,71 @@ impl Mode {
         Ok(())
     }
 
-    fn interactive(program_envs: Envs) -> io::Result<()> {
-        let tf = match TempFile::new() {
+    fn interactive_init(tf: &TempFile, program_envs: &Envs) {
+        let to_write = match &tf.write {
+            Some(write_f) => write_f,
+            None => {
+                return;
+            }
+        };
+
+        let arc_tf = Arc::new(Mutex::new(to_write));
+
+        let _ = initialize_search(&program_envs.start_path, &mut |node_name, _| {
+            let write_state = arc_tf
+                .lock()
+                .unwrap()
+                .write_fmt(format_args!("{}\n", node_name));
+
+            match write_state {
+                Ok(_) => {}
+                Err(err) => println!("[ERR] cant write err={}", err.to_string()),
+            }
+        });
+    }
+
+    fn read_from_stdin() -> Option<String> {
+        print!("> ");
+        std::io::stdout().flush().unwrap();
+        let mut pattern = String::new();
+        std::io::stdin().read_line(&mut pattern).unwrap();
+        if pattern.starts_with("q") || pattern.starts_with("quit") || pattern.starts_with("exit") {
+            return None;
+        }
+
+        Some(pattern.trim().to_string())
+    }
+
+    fn find_pattern(tf: &mut TempFile, pattern: &String, program_envs: &Envs) {
+        tf.refresh();
+        let search = RefCell::new(true);
+        let found = RefCell::new(0);
+        while search.take() {
+            let find_result = tf.find(&pattern, &|f| {
+                if program_envs.max_output_lines < 1 || found.take() < program_envs.max_output_lines
+                {
+                    println!("{}", f);
+                    found.replace(found.take() + 1);
+                    search.replace(false);
+                }
+            });
+
+            match find_result {
+                FindResult::Error(err) => println!("[ERR] cant read; err={}", err.to_string()),
+                FindResult::Read => {}
+                FindResult::Eof => {
+                    search.replace(false);
+                }
+            }
+        }
+
+        if found.take() < 1 {
+            println!("");
+        }
+    }
+
+    pub fn interactive(program_envs: Envs) -> io::Result<()> {
+        let mut tf = match TempFile::new() {
             Ok(f) => f,
             Err(err) => {
                 println!("[ERR] {}", err);
@@ -219,58 +298,17 @@ impl Mode {
             }
         };
 
-        let arc_tf = Arc::new(Mutex::new(tf));
+        Mode::interactive_init(&tf, &program_envs);
 
-        initialize_search(&program_envs.start_path, &mut |node_name, _| {
-            let write_state = arc_tf
-                .lock()
-                .unwrap()
-                .f
-                .write_fmt(format_args!("{}\n", node_name));
+        println!("temp file: {}", tf.name);
 
-            match write_state {
-                Ok(_) => {}
-                Err(err) => println!("[ERR] cant write err={}", err.to_string()),
-            }
-        })?;
+        loop {
+            let pattern = match Self::read_from_stdin() {
+                Some(p) => p,
+                None => break,
+            };
 
-        println!("temp file: {}", arc_tf.lock().unwrap().name);
-
-        let mut quit = false;
-        while !quit {
-            print!("> ");
-            std::io::stdout().flush()?;
-            let mut pattern = String::new();
-            std::io::stdin().read_line(&mut pattern).unwrap();
-            if pattern.starts_with("q")
-                || pattern.starts_with("quit")
-                || pattern.starts_with("exit")
-            {
-                quit = true;
-                continue;
-            }
-
-            let search = RefCell::new(true);
-            let found = RefCell::new(0);
-            while search.take() {
-                let find_result = arc_tf.lock().unwrap().find(&pattern, &|f| {
-                    if program_envs.max_output_lines < 1
-                        || found.take() < program_envs.max_output_lines
-                    {
-                        println!("{}", f);
-                        found.replace(found.take() + 1);
-                        search.replace(false);
-                    }
-                });
-
-                match find_result {
-                    FindResult::Error(err) => println!("[ERR] cant read; err={}", err.to_string()),
-                    FindResult::Read => {}
-                    FindResult::Eof => {
-                        search.replace(false);
-                    }
-                }
-            }
+            Self::find_pattern(&mut tf, &pattern, &program_envs);
         }
 
         Ok(())
@@ -278,9 +316,9 @@ impl Mode {
 }
 
 fn main() -> io::Result<()> {
-    let words: Vec<String> = std::env::args().map(|e| e).collect();
+    //let words: Vec<String> = std::env::args().map(|e| e).collect();
 
-    //let words: Vec<String> = vec!["1".to_string(), "--interactive".to_string()];
+    let words: Vec<String> = vec!["1".to_string(), "--interactive".to_string()];
 
     let program_envs = match Envs::new(&words) {
         Ok(res) => res,
