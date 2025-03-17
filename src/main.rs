@@ -2,7 +2,10 @@ use std::{
     cell::RefCell,
     fs::{self, File},
     io::{self, Read, Seek, Write},
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicI32, Ordering},
+        Arc, Mutex,
+    },
 };
 
 struct Envs {
@@ -62,7 +65,6 @@ impl Envs {
     }
 }
 
-
 #[derive(PartialEq)]
 enum FindResult {
     Error(String),
@@ -78,9 +80,8 @@ struct TempFile {
 }
 
 impl Drop for TempFile {
-    fn drop(&mut self) { 
+    fn drop(&mut self) {
         let _ = std::fs::remove_file(&self.name);
-        println!("> bb gandon <");
     }
 }
 
@@ -264,13 +265,14 @@ impl Mode {
     fn find_pattern(tf: &mut TempFile, pattern: &String, program_envs: &Envs) {
         tf.refresh();
         let search = RefCell::new(true);
-        let found = RefCell::new(0);
+        let found = AtomicI32::new(0);
         while search.take() {
             let find_result = tf.find(&pattern, &|f| {
-                if program_envs.max_output_lines < 1 || found.take() < program_envs.max_output_lines
+                let prev = found.fetch_add(1, Ordering::Relaxed);
+                if program_envs.max_output_lines < 0
+                    || found.load(Ordering::Relaxed) < program_envs.max_output_lines
                 {
-                    println!("{}", f);
-                    found.replace(found.take() + 1);
+                    println!("{}) {}", prev + 1, f);
                     search.replace(false);
                 }
             });
@@ -284,8 +286,11 @@ impl Mode {
             }
         }
 
-        if found.take() < 1 {
+        let val = found.load(Ordering::Relaxed);
+        if val < 1 {
             println!("");
+        } else {
+            println!("found {}", val);
         }
     }
 
@@ -297,10 +302,10 @@ impl Mode {
                 return Ok(());
             }
         };
-
+        
+        let start = std::time::Instant::now();
         Mode::interactive_init(&tf, &program_envs);
-
-        println!("temp file: {}", tf.name);
+        println!("temp file: {} / took {} ms", tf.name, start.elapsed().as_millis());
 
         loop {
             let pattern = match Self::read_from_stdin() {
