@@ -1,10 +1,7 @@
 use std::{
     fs::{self, File},
-    io::{self, BufRead, Read, Seek, Write},
-    str::FromStr,
-    string,
+    io::{self, Read, Seek, Write},
     sync::{Arc, Mutex},
-    time::Instant,
 };
 
 struct Envs {
@@ -24,7 +21,7 @@ impl Envs {
 
         let mut result = Envs {
             interactive: false,
-            max_output_lines: -1,
+            max_output_lines: 10,
             pattern: String::new(),
             start_path: ".".to_string(),
         };
@@ -35,7 +32,7 @@ impl Envs {
             } else if words[i].starts_with("--line=") {
                 result.max_output_lines = match words[i]["--line=".len()..].parse::<i32>() {
                     Ok(value) => value,
-                    Err(_) => -1,
+                    Err(_) => 10,
                 };
             } else if words[i].starts_with("--path=") {
                 result.start_path = String::from(&words[i]["--path=".len()..]);
@@ -67,12 +64,14 @@ impl Envs {
 struct TempFile {
     name: String,
     f: File,
+    seek: u64,
 }
 
+#[derive(PartialEq)]
 enum FindResult {
-    Ok(String),
     Error(String),
-    None,
+    Read,
+    Eof,
 }
 
 impl TempFile {
@@ -89,22 +88,31 @@ impl TempFile {
         Ok(TempFile {
             name: String::from(temp_file_path.to_str().unwrap()),
             f: f,
+            seek: 0,
         })
     }
 
-    fn find(&mut self, pattern: &String, seek_from_start: Option<bool>) -> FindResult {
-        let seek = match seek_from_start {
-            Some(v) => {
-                if v {
-                    io::SeekFrom::Start(0)
-                } else {
-                    io::SeekFrom::Current(0)
-                }
-            }
-            None => io::SeekFrom::Current(0),
+    fn from(file_path: String) -> Result<TempFile, String> {
+        let temp_file_path = &std::path::Path::new(file_path.as_str());
+
+        let f = match std::fs::File::open(temp_file_path) {
+            Ok(f) => f,
+            Err(_) => return Err("cant create temp file".to_string()),
         };
 
-        match self.f.seek(seek) {
+        Ok(TempFile {
+            name: String::from(temp_file_path.to_str().unwrap()),
+            f: f,
+            seek: 0,
+        })
+    }
+
+    fn refresh(&mut self) {
+        self.seek = 0;
+    }
+
+    fn find<F: Fn(&String)>(&mut self, pattern: &String, on_find: &F) -> FindResult {
+        match self.f.seek(io::SeekFrom::Start(self.seek)) {
             Ok(_) => {}
             Err(err) => return FindResult::Error(err.to_string()),
         };
@@ -113,8 +121,13 @@ impl TempFile {
 
         let mut buf = vec![0; SIZE];
 
-        let read = match self.f.read(&mut buf) {
-            Ok(read) => read,
+        match self.f.read(&mut buf) {
+            Ok(read) => {
+                self.seek += read as u64;
+                if read < 1 {
+                    return FindResult::Eof;
+                }
+            }
             Err(err) => {
                 return FindResult::Error(err.to_string());
             }
@@ -123,15 +136,24 @@ impl TempFile {
         let str = match String::from_utf8(buf) {
             Ok(str) => str,
             Err(err) => {
-                return FindResult::Error(err.to_string())
+                return FindResult::Error(err.to_string());
             }
         };
 
-        
+        let splitted = str.split("\n");
+        let mut last: &str = "";
+        for s in splitted {
+            if s.contains(pattern) {
+                on_find(&s.to_string());
+            }
+            last = s;
+        }
 
-        //reader.lines().take(n)
+        if last.len() > 0 && !last.ends_with('\0') && !last.ends_with('\n') {
+            self.seek -= last.len() as u64;
+        }
 
-        FindResult::None
+        FindResult::Read
     }
 }
 
@@ -174,10 +196,51 @@ fn initialize_search<F: Fn(&String, bool)>(full_path: &String, on_find: &F) -> i
     Ok(())
 }
 
+struct Mode {}
+
+impl Mode {
+    fn straight(program_envs: Envs) -> io::Result<()> {
+        initialize_search(&program_envs.start_path, &mut |node_name, _| {
+            if node_name.contains(&program_envs.pattern) {
+                println!("{}", node_name);
+            };
+        })?;
+
+        Ok(())
+    }
+
+    fn interactive(program_envs: Envs) -> io::Result<()> {
+        let tf = match TempFile::new() {
+            Ok(f) => f,
+            Err(err) => {
+                println!("[ERR] {}", err);
+                return Ok(());
+            }
+        };
+
+        let arc_tf = Arc::new(Mutex::new(tf));
+
+        initialize_search(&program_envs.start_path, &mut |node_name, _| {
+            let write_state = arc_tf
+                .lock()
+                .unwrap()
+                .f
+                .write_fmt(format_args!("{}\n", node_name));
+
+            match write_state {
+                Ok(_) => {}
+                Err(err) => println!("[ERR] cant write err={}", err.to_string()),
+            }
+        })?;
+
+        println!("temp file: {}", arc_tf.lock().unwrap().name);
+
+        Ok(())
+    }
+}
+
 fn main() -> io::Result<()> {
     let words: Vec<String> = std::env::args().map(|e| e).collect();
-
-    let start_time = Instant::now();
 
     let program_envs = match Envs::new(&words) {
         Ok(res) => res,
@@ -187,37 +250,11 @@ fn main() -> io::Result<()> {
         }
     };
 
-    println!("envs: {:?}", program_envs.to_string());
-
-    let tf = match TempFile::new() {
-        Ok(f) => f,
-        Err(err) => {
-            println!("[ERR] {}", err);
-            return Ok(());
-        }
-    };
-
-    let arc_tf = Arc::new(Mutex::new(tf));
-
-    initialize_search(&program_envs.start_path, &mut |node_name, is_dir| {
-        arc_tf
-            .lock()
-            .unwrap()
-            .f
-            .write_fmt(format_args!("{}\n", node_name))
-            .unwrap();
-        if node_name.contains(&program_envs.pattern) {
-            println!("{}", node_name);
-        };
-    })?;
-
-    let init_end_time = start_time.elapsed();
-
-    println!(
-        "took {} ms | temp {}",
-        init_end_time.as_millis(),
-        arc_tf.lock().unwrap().name
-    );
+    if program_envs.interactive {
+        Mode::interactive(program_envs)?;
+    } else {
+        Mode::straight(program_envs)?;
+    }
 
     Ok(())
 }
@@ -226,14 +263,14 @@ fn main() -> io::Result<()> {
 mod tests {
     use std::cell::RefCell;
 
-    use crate::{initialize_search, Envs, TempFile};
+    use crate::{initialize_search, Envs, FindResult, TempFile};
 
     fn get_env_1() -> Vec<String> {
         vec![
             r".\projects\file\file\target\release\file.exe".to_string(),
             r"'some pattern .*".to_string(),
             r"--path=.\some\dir".to_string(),
-            r"--line=10".to_string(),
+            r"--line=11".to_string(),
         ]
     }
 
@@ -257,7 +294,7 @@ mod tests {
         assert_eq!(env.pattern, "'some pattern .*".to_string());
         assert_eq!(env.start_path, r".\some\dir".to_string());
         assert_eq!(env.interactive, false);
-        assert_eq!(env.max_output_lines, 10);
+        assert_eq!(env.max_output_lines, 11);
     }
 
     #[test]
@@ -283,6 +320,30 @@ mod tests {
 
     #[test]
     fn temp_file_test() {
-        let file = TempFile::new();
+        let file_path = "test/find.txt";
+        let mut file = match TempFile::from(file_path.to_string()) {
+            Ok(f) => f,
+            Err(err) => {
+                assert_eq!(err.to_string(), "".to_string());
+                return;
+            }
+        };
+
+        let has_been_found = RefCell::new(false);
+        let mut is_eof = false;
+        while !is_eof {
+            let find_result = file.find(&"Cargo.lock".to_string(), &|f| {
+                has_been_found.replace(true);
+            });
+
+            match find_result {
+                FindResult::Error(err) => assert_eq!(err.to_string(), "".to_string()),
+                FindResult::Read => {}
+                FindResult::Eof => is_eof = true,
+                FindResult::None => {}
+            }
+        }
+
+        assert!(has_been_found.take())
     }
 }
