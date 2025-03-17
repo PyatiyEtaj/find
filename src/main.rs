@@ -1,4 +1,5 @@
 use std::{
+    cell::RefCell,
     fs::{self, File},
     io::{self, Read, Seek, Write},
     sync::{Arc, Mutex},
@@ -235,12 +236,51 @@ impl Mode {
 
         println!("temp file: {}", arc_tf.lock().unwrap().name);
 
+        let mut quit = false;
+        while !quit {
+            print!("> ");
+            std::io::stdout().flush()?;
+            let mut pattern = String::new();
+            std::io::stdin().read_line(&mut pattern).unwrap();
+            if pattern.starts_with("q")
+                || pattern.starts_with("quit")
+                || pattern.starts_with("exit")
+            {
+                quit = true;
+                continue;
+            }
+
+            let search = RefCell::new(true);
+            let found = RefCell::new(0);
+            while search.take() {
+                let find_result = arc_tf.lock().unwrap().find(&pattern, &|f| {
+                    if program_envs.max_output_lines < 1
+                        || found.take() < program_envs.max_output_lines
+                    {
+                        println!("{}", f);
+                        found.replace(found.take() + 1);
+                        search.replace(false);
+                    }
+                });
+
+                match find_result {
+                    FindResult::Error(err) => println!("[ERR] cant read; err={}", err.to_string()),
+                    FindResult::Read => {}
+                    FindResult::Eof => {
+                        search.replace(false);
+                    }
+                }
+            }
+        }
+
         Ok(())
     }
 }
 
 fn main() -> io::Result<()> {
     let words: Vec<String> = std::env::args().map(|e| e).collect();
+
+    //let words: Vec<String> = vec!["1".to_string(), "--interactive".to_string()];
 
     let program_envs = match Envs::new(&words) {
         Ok(res) => res,
