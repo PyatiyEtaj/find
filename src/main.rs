@@ -81,7 +81,7 @@ struct TempFile {
 
 impl Drop for TempFile {
     fn drop(&mut self) {
-        //let _ = std::fs::remove_file(&self.name);
+        let _ = std::fs::remove_file(&self.name);
     }
 }
 
