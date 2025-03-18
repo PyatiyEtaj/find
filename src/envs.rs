@@ -6,13 +6,7 @@ pub struct Envs {
 }
 
 impl Envs {
-    pub fn new(words: &Vec<String>) -> Result<Envs, String> {
-        if words.len() < 2 {
-            return Err(
-                "must be at least 1 arg regex pattern or --interactive [--line]".to_string(),
-            );
-        }
-
+    pub fn new(words: &Vec<String>) -> Envs {
         let mut result = Envs {
             interactive: false,
             max_output_lines: 10,
@@ -21,9 +15,7 @@ impl Envs {
         };
 
         for i in 1..words.len() {
-            if words[i].starts_with("--interactive") {
-                result.interactive = true;
-            } else if words[i].starts_with("--line=") {
+            if words[i].starts_with("--line=") {
                 result.max_output_lines = match words[i]["--line=".len()..].parse::<i32>() {
                     Ok(value) => value,
                     Err(_) => 10,
@@ -37,11 +29,11 @@ impl Envs {
         }
         result.pattern = String::from(result.pattern.trim());
 
-        if result.pattern.len() < 1 && !result.interactive {
-            return Err("cant find any pattern".to_string());
+        if result.pattern.len() < 1 {
+            result.interactive = true;
         }
 
-        Ok(result)
+        result
     }
 }
 
@@ -62,10 +54,7 @@ mod tests {
     fn parsing_envs_test() {
         let words = get_env_1();
 
-        let program_envs_result = Envs::new(&words);
-
-        assert!(program_envs_result.is_ok());
-        let env = program_envs_result.unwrap();
+        let env = Envs::new(&words);
 
         assert_eq!(env.pattern, "'some pattern .*".to_string());
         assert_eq!(env.start_path, r".\some\dir".to_string());

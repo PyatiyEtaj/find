@@ -14,9 +14,7 @@ fn get_env_2() -> Vec<String> {
 fn search_pattern_test() {
     let words = get_env_2();
 
-    let program_envs_result = Envs::new(&words);
-    assert!(program_envs_result.is_ok());
-    let env = program_envs_result.unwrap();
+    let env = Envs::new(&words);
     let has_been_found = RefCell::new(false);
 
     FindMode::initialize_search(&env.start_path, &mut |file, is_dir| {
@@ -41,8 +39,7 @@ fn get_env_3() -> Vec<String> {
 #[test]
 fn temp_file_test() {
     let words = get_env_3();
-    let program_envs_result = Envs::new(&words);
-    assert!(program_envs_result.is_ok());
+    let env = Envs::new(&words);
 
     let mut file = match TempFile::new() {
         Ok(f) => f,
@@ -52,7 +49,7 @@ fn temp_file_test() {
         }
     };
 
-    FindMode::interactive_init(&file, &program_envs_result.unwrap());
+    FindMode::interactive_init(&file, &env);
 
     let has_been_found = RefCell::new(false);
 
