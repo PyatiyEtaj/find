@@ -11,7 +11,7 @@ fn get_env_2() -> Vec<String> {
 }
 
 #[test]
-fn search_pattern_test() {
+fn search_pattern() {
     let words = get_env_2();
 
     let env = Envs::new(&words);
@@ -37,7 +37,7 @@ fn get_env_3() -> Vec<String> {
 }
 
 #[test]
-fn temp_file_test() {
+fn temp_file_find() {
     let words = get_env_3();
     let env = Envs::new(&words);
 

@@ -38,7 +38,7 @@ impl Envs {
 }
 
 #[cfg(test)]
-mod tests {
+mod envs_tests {
     use crate::envs::Envs;
 
     fn get_env_1() -> Vec<String> {
@@ -51,7 +51,7 @@ mod tests {
     }
 
     #[test]
-    fn parsing_envs_test() {
+    fn parsing_envs() {
         let words = get_env_1();
 
         let env = Envs::new(&words);
