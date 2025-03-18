@@ -217,7 +217,7 @@ impl Mode {
         Ok(())
     }
 
-    fn interactive_init(tf: &TempFile, program_envs: &Envs) {
+    pub fn interactive_init(tf: &TempFile, program_envs: &Envs) {
         let to_write = match &tf.write {
             Some(write_f) => write_f,
             None => {
@@ -252,7 +252,7 @@ impl Mode {
         Some(pattern.trim().to_string())
     }
 
-    fn find_pattern(tf: &mut TempFile, pattern: &String, program_envs: &Envs) {
+    pub fn interactive_find_pattern(tf: &mut TempFile, pattern: &String, program_envs: &Envs) {
         tf.refresh();
         let search = AtomicBool::new(true);
         let found = AtomicI32::new(0);
@@ -310,7 +310,7 @@ impl Mode {
                 None => break,
             };
 
-            Self::find_pattern(&mut tf, &pattern, &program_envs);
+            Self::interactive_find_pattern(&mut tf, &pattern, &program_envs);
         }
 
         Ok(())
@@ -343,7 +343,7 @@ fn main() -> io::Result<()> {
 mod tests {
     use std::cell::RefCell;
 
-    use crate::{initialize_search, Envs, FindResult, TempFile};
+    use crate::{initialize_search, Envs, FindResult, Mode, TempFile};
 
     fn get_env_1() -> Vec<String> {
         vec![
@@ -351,14 +351,6 @@ mod tests {
             r"'some pattern .*".to_string(),
             r"--path=.\some\dir".to_string(),
             r"--line=11".to_string(),
-        ]
-    }
-
-    fn get_env_2() -> Vec<String> {
-        vec![
-            r".\projects\file\file\target\release\file.exe".to_string(),
-            r"main.rs".to_string(),
-            r"--path=.".to_string(),
         ]
     }
 
@@ -375,6 +367,14 @@ mod tests {
         assert_eq!(env.start_path, r".\some\dir".to_string());
         assert_eq!(env.interactive, false);
         assert_eq!(env.max_output_lines, 11);
+    }
+
+    fn get_env_2() -> Vec<String> {
+        vec![
+            r".\projects\file\file\target\release\file.exe".to_string(),
+            r"main.rs".to_string(),
+            r"--path=.".to_string(),
+        ]
     }
 
     #[test]
@@ -398,10 +398,20 @@ mod tests {
         assert!(has_been_found.take())
     }
 
+    fn get_env_3() -> Vec<String> {
+        vec![
+            r".\target\release\file.exe".to_string(),
+            r"main.rs".to_string(),
+        ]
+    }
+
     #[test]
     fn temp_file_test() {
-        let file_path = "test/find.txt";
-        let mut file = match TempFile::from(file_path.to_string()) {
+        let words = get_env_3();
+        let program_envs_result = Envs::new(&words);
+        assert!(program_envs_result.is_ok());
+        
+        let mut file = match TempFile::new() {
             Ok(f) => f,
             Err(err) => {
                 assert_eq!(err.to_string(), "".to_string());
@@ -409,7 +419,10 @@ mod tests {
             }
         };
 
+        Mode::interactive_init(&file, &program_envs_result.unwrap());
+
         let has_been_found = RefCell::new(false);
+        
         loop {
             let find_result = file.find(&"Cargo.lock".to_string(), &|_| {
                 has_been_found.replace(true);
