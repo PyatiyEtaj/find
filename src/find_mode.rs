@@ -23,7 +23,7 @@ impl FindMode {
         let dir = match read_result {
             Ok(dir) => dir,
             Err(msg) => {
-                println!("{:?} err={:?}", full_path, msg);
+                println!("[ERR] {:?} err={:?}", full_path, msg);
                 return Ok(());
             }
         };
