@@ -53,16 +53,6 @@ impl Envs {
 
         Ok(result)
     }
-
-    fn to_string(&self) -> String {
-        let mut str = String::new();
-        str.push_str(format!("interactive: '{}' | ", self.interactive).as_str());
-        str.push_str(format!("line: '{}' | ", self.max_output_lines).as_str());
-        str.push_str(format!("pattern: '{}' | ", self.pattern).as_str());
-        str.push_str(format!("start-path: '{}'", self.start_path).as_str());
-
-        str
-    }
 }
 
 #[derive(PartialEq)]
