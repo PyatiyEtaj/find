@@ -34,6 +34,17 @@ impl RegexHelper {
         Ok(RegexHelper { regexes: vec![r] })
     }
 
+    pub fn add_pattern(&mut self, pattern: &String) -> Result<(), String>{
+        let r = match Regex::new(pattern) {
+            Ok(r) => r,
+            Err(err) => return Err(err.to_string()),
+        };
+
+        self.regexes.push(r);
+
+        Ok(())
+    }
+
     pub fn check(&self, str: &String) -> bool {
         for r in &self.regexes {
             if r.is_match(str) {

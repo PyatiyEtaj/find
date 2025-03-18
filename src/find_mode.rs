@@ -29,7 +29,10 @@ impl FindMode {
         };
 
         let ignore = match RegexHelper::from_file(".gitignore".to_string()){
-            Ok(s) => Some(s),
+            Ok(mut s) => {
+                s.add_pattern(&"/.git".to_string()).unwrap();
+                Some(s)
+            },
             Err(_) => None,
         };
 
