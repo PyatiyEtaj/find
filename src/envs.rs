@@ -44,3 +44,32 @@ impl Envs {
         Ok(result)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::envs::Envs;
+
+    fn get_env_1() -> Vec<String> {
+        vec![
+            r".\projects\file\file\target\release\file.exe".to_string(),
+            r"'some pattern .*".to_string(),
+            r"--path=.\some\dir".to_string(),
+            r"--line=11".to_string(),
+        ]
+    }
+
+    #[test]
+    fn parsing_envs_test() {
+        let words = get_env_1();
+
+        let program_envs_result = Envs::new(&words);
+
+        assert!(program_envs_result.is_ok());
+        let env = program_envs_result.unwrap();
+
+        assert_eq!(env.pattern, "'some pattern .*".to_string());
+        assert_eq!(env.start_path, r".\some\dir".to_string());
+        assert_eq!(env.interactive, false);
+        assert_eq!(env.max_output_lines, 11);
+    }
+}
