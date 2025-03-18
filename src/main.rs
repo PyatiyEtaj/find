@@ -298,7 +298,11 @@ impl Mode {
 
         let start = std::time::Instant::now();
         Mode::interactive_init(&tf, &program_envs);
-        println!("temp file: {} / took {} ms", tf.name, start.elapsed().as_millis());
+        println!(
+            "temp file: {} / took {} ms",
+            tf.name,
+            start.elapsed().as_millis()
+        );
 
         loop {
             let pattern = match Self::read_from_stdin() {
@@ -406,17 +410,15 @@ mod tests {
         };
 
         let has_been_found = RefCell::new(false);
-        let mut is_eof = false;
-        while !is_eof {
-            let find_result = file.find(&"Cargo.lock".to_string(), &|f| {
+        loop {
+            let find_result = file.find(&"Cargo.lock".to_string(), &|_| {
                 has_been_found.replace(true);
             });
 
             match find_result {
                 FindResult::Error(err) => assert_eq!(err.to_string(), "".to_string()),
                 FindResult::Read => {}
-                FindResult::Eof => is_eof = true,
-                FindResult::None => {}
+                FindResult::Eof => break,
             }
         }
 
