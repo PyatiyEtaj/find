@@ -7,14 +7,17 @@ use std::{
     },
 };
 
-use crate::{envs::Envs, temp_file};
+use crate::{envs::Envs, regex_helper::RegexHelper, temp_file};
 
 use temp_file::{FindResult, TempFile};
 
 pub struct FindMode {}
 
 impl FindMode {
-    pub fn initialize_search<F: Fn(&String, bool)>(full_path: &String, on_find: &F) -> io::Result<()> {
+    pub fn initialize_search<F: Fn(&String, bool)>(
+        full_path: &String,
+        on_find: &F,
+    ) -> io::Result<()> {
         let read_result = fs::read_dir(full_path);
 
         let dir = match read_result {
@@ -54,8 +57,16 @@ impl FindMode {
     }
 
     pub fn straight(program_envs: Envs) -> io::Result<()> {
+        let s = match RegexHelper::from_string(&program_envs.pattern) {
+            Ok(s) => s,
+            Err(err) => {
+                println!("[ERR] err={}", err);
+                return Ok(());
+            }
+        };
+
         Self::initialize_search(&program_envs.start_path, &mut |node_name, _| {
-            if node_name.contains(&program_envs.pattern) {
+            if s.check(node_name) {
                 println!("{}", node_name);
             };
         })?;

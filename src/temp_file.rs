@@ -3,6 +3,8 @@ use std::{
     io::{self, Read, Seek},
 };
 
+use crate::regex_helper::RegexHelper;
+
 #[derive(PartialEq)]
 pub enum FindResult {
     Error(String),
@@ -57,6 +59,11 @@ impl TempFile {
             Err(err) => return FindResult::Error(err.to_string()),
         };
 
+        let searcher = match RegexHelper::from_string(pattern) {
+            Ok(s) => s,
+            Err(err) => return FindResult::Error(err),
+        };
+
         const SIZE: usize = 128 * 1024;
 
         let mut buf = vec![0; SIZE];
@@ -83,7 +90,7 @@ impl TempFile {
         let splitted = str.split("\n");
         let mut last: &str = "";
         for s in splitted {
-            if s.contains(pattern) {
+            if searcher.check_str(s) {
                 on_find(&s.to_string());
             }
             last = s;

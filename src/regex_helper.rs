@@ -43,7 +43,17 @@ impl RegexHelper {
 
     pub fn check(&self, str: &String) -> bool {
         for r in &self.regexes {
-            if r.is_match(&str) {
+            if r.is_match(str) {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    pub fn check_str(&self, str: &str) -> bool {
+        for r in &self.regexes {
+            if r.is_match(str) {
                 return true;
             }
         }
