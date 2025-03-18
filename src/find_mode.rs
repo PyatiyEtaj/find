@@ -28,6 +28,11 @@ impl FindMode {
             }
         };
 
+        let ignore = match RegexHelper::from_file(".gitignore".to_string()){
+            Ok(s) => Some(s),
+            Err(_) => None,
+        };
+
         for info_dir in dir {
             let information = match info_dir {
                 Ok(information) => information,
@@ -44,6 +49,15 @@ impl FindMode {
                 Err(_) => continue,
             };
             let full_path = &format!("{full_path}/{file_name}");
+
+            let ignore_node = match ignore {
+                Some(ref s) => s.check(full_path),
+                None => false,
+            };
+
+            if ignore_node{
+                continue;
+            }
 
             if file_type.is_file() {
                 on_find(full_path, false);

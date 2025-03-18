@@ -1,8 +1,7 @@
 use regex::Regex;
-use std::io::{BufRead, Read};
+use std::io::BufRead;
 
 pub struct RegexHelper {
-    name: String,
     regexes: Vec<Regex>,
 }
 
@@ -23,10 +22,7 @@ impl RegexHelper {
             .filter_map(|p| regex::Regex::new(p).ok())
             .collect::<Vec<Regex>>();
 
-        Ok(RegexHelper {
-            name: path,
-            regexes: regexes,
-        })
+        Ok(RegexHelper { regexes: regexes })
     }
 
     pub fn from_string(pattern: &String) -> Result<RegexHelper, String> {
@@ -35,10 +31,7 @@ impl RegexHelper {
             Err(err) => return Err(err.to_string()),
         };
 
-        Ok(RegexHelper {
-            name: "".to_string(),
-            regexes: vec![r],
-        })
+        Ok(RegexHelper { regexes: vec![r] })
     }
 
     pub fn check(&self, str: &String) -> bool {
@@ -83,7 +76,6 @@ mod ignore_files_tests {
         assert!(ignore.check(&"123/local_data/1234".to_string()));
     }
 
-    
     #[test]
     fn check_from_string() {
         let ignore = match RegexHelper::from_string(&".*some".to_string()) {
