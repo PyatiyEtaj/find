@@ -1,5 +1,4 @@
 use std::{
-    fs,
     io::{self, Write},
     sync::{
         atomic::{AtomicBool, AtomicI32, Ordering},
@@ -7,68 +6,13 @@ use std::{
     },
 };
 
-use crate::{envs::Envs, regex_helper::RegexHelper, temp_file};
+use crate::{envs::Envs, regex_helper::RegexHelper, temp_file, walker::Walker};
 
 use temp_file::{FindResult, TempFile};
 
 pub struct FindMode {}
 
 impl FindMode {
-    pub fn initialize_search<F: Fn(&String, bool)>(
-        full_path: &String,
-        on_find: &F,
-        ignore_helper: &RegexHelper,
-    ) -> io::Result<()> {
-        let read_result = fs::read_dir(full_path);
-
-        let dir = match read_result {
-            Ok(dir) => dir,
-            Err(msg) => {
-                println!("[ERR] {:?} err={:?}", full_path, msg);
-                return Ok(());
-            }
-        };
-
-        let ignore = if ignore_helper.is_empty() {
-            &RegexHelper::from_gitignore()
-        } else {
-            ignore_helper
-        };
-
-        for info_dir in dir {
-            let information = match info_dir {
-                Ok(information) => information,
-                Err(_) => continue,
-            };
-
-            let file_type = match information.file_type() {
-                Ok(file_type) => file_type,
-                Err(_) => continue,
-            };
-
-            let file_name = match information.file_name().into_string() {
-                Ok(n) => n,
-                Err(_) => continue,
-            };
-            let full_path = &format!("{full_path}/{file_name}");
-
-            let ignore_node = ignore.check(full_path);
-
-            if ignore_node {
-                continue;
-            }
-
-            if file_type.is_file() {
-                on_find(full_path, false);
-            } else if file_type.is_dir() {
-                on_find(full_path, true);
-                Self::initialize_search(full_path, on_find, ignore)?;
-            }
-        }
-
-        Ok(())
-    }
-
     pub fn straight(program_envs: Envs) -> io::Result<()> {
         let s = match RegexHelper::from_string(&program_envs.pattern) {
             Ok(s) => s,
@@ -80,9 +24,11 @@ impl FindMode {
 
         let ignore = RegexHelper::new();
 
-        Self::initialize_search(
+        let walker = Walker::new();
+
+        walker.walk(
             &program_envs.start_path,
-            &mut |node_name, _| {
+            &|node_name| {
                 if s.check(node_name) {
                     println!("{}", node_name);
                 };
@@ -105,9 +51,11 @@ impl FindMode {
 
         let arc_tf = Arc::new(Mutex::new(to_write));
 
-        let _ = Self::initialize_search(
+        let walker = Walker::new();
+
+        let _ = walker.walk(
             &program_envs.start_path,
-            &mut |node_name, _| {
+            &|node_name| {
                 let write_state = arc_tf
                     .lock()
                     .unwrap()

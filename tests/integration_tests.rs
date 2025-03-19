@@ -5,6 +5,7 @@ use find::{
     find_mode::FindMode,
     regex_helper::RegexHelper,
     temp_file::{FindResult, TempFile},
+    walker::Walker,
 };
 
 fn get_env_2() -> Vec<String> {
@@ -24,18 +25,20 @@ fn search_pattern() {
     let checker = RegexHelper::from_string(&env.pattern).unwrap();
     let ignore = RegexHelper::new();
 
-    FindMode::initialize_search(
-        &env.start_path,
-        &mut |file, is_dir| {
-            if checker.check(file) {
-                assert_eq!(*file, r"./src/main.rs".to_string());
-                assert_eq!(is_dir, false);
-                has_been_found.replace(true);
-            };
-        },
-        &ignore,
-    )
-    .unwrap();
+    let walker = Walker::new();
+
+    walker
+        .walk(
+            env.start_path,
+            &|file| {
+                if checker.check(file) {
+                    assert_eq!(*file, r"./src/main.rs".to_string());
+                    has_been_found.replace(true);
+                };
+            },
+            &ignore,
+        )
+        .unwrap();
 
     assert!(has_been_found.take())
 }

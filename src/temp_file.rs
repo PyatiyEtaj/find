@@ -90,7 +90,7 @@ impl TempFile {
         let splitted = str.split("\n");
         let mut last: &str = "";
         for s in splitted {
-            if searcher.check_str(s) {
+            if searcher.check(s) {
                 on_find(&s.to_string());
             }
             last = s;
