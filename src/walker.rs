@@ -26,7 +26,7 @@ impl Walker {
         };
 
         let ignore = if ignore.is_empty() {
-            &RegexHelper::from_gitignore()
+            &RegexHelper::from_gitignore(&full_path)
         } else {
             ignore
         };
@@ -46,6 +46,7 @@ impl Walker {
                 Ok(n) => n,
                 Err(_) => continue,
             };
+
             let full_path = &format!("{}/{}", full_path.as_ref(), file_name);
 
             let ignore_node = ignore.check(full_path);
@@ -76,11 +77,11 @@ mod walker_tests {
     #[test]
     fn simple_walk() {
         let walker = Walker::new();
-        let ignore = RegexHelper::from_gitignore();
+        let ignore = RegexHelper::new();
         let search = RegexHelper::from_string("main.rs").unwrap();
         let has_been_found = RefCell::new(false);
         _ = walker.walk(
-            ".",
+            "..",
             &|name| {
                 if search.check(name) {
                     has_been_found.replace(true);

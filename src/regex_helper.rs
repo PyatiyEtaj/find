@@ -10,25 +10,6 @@ impl RegexHelper {
         RegexHelper { regexes: vec![] }
     }
 
-    pub fn from_file<P: AsRef<str>>(path: P) -> Result<RegexHelper, String> {
-        let file = match std::fs::File::open(path.as_ref()) {
-            Ok(f) => f,
-            Err(err) => return Err(err.to_string()),
-        };
-
-        let lines = std::io::BufReader::new(file)
-            .lines()
-            .map_while(Result::ok)
-            .collect::<Vec<String>>();
-
-        let regexes = lines
-            .iter()
-            .filter_map(|p| regex::Regex::new(p).ok())
-            .collect::<Vec<Regex>>();
-
-        Ok(RegexHelper { regexes: regexes })
-    }
-
     pub fn from_string<S: AsRef<str>>(pattern: S) -> Result<RegexHelper, String> {
         let r = match Regex::new(pattern.as_ref()) {
             Ok(r) => r,
@@ -38,8 +19,8 @@ impl RegexHelper {
         Ok(RegexHelper { regexes: vec![r] })
     }
 
-    pub fn from_gitignore() -> RegexHelper {
-        let path = ".gitignore";
+    pub fn from_gitignore<P: AsRef<str>>(dir: P) -> RegexHelper {
+        let path = std::path::Path::new(dir.as_ref()).join(".gitignore");
 
         let file = match std::fs::File::open(&path) {
             Ok(f) => f,
@@ -89,7 +70,9 @@ mod ignore_files_tests {
 
     #[test]
     fn check_gitignore() {
-        let ignore = RegexHelper::from_gitignore();
+        let path = "..";
+
+        let ignore = RegexHelper::from_gitignore(path);
 
         assert!(ignore.check(&"haha/target".to_string()));
         assert!(ignore.check(&"hihi/target".to_string()));
