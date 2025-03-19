@@ -15,5 +15,6 @@ simple search
 $user> find my_pattern
 1) first
 2) second
+...
 $user>
 ```
