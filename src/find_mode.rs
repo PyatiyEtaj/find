@@ -109,11 +109,10 @@ impl FindMode {
             }
         }
 
-        let val = found.load(Ordering::Relaxed);
-        if val < 1 {
-            println!("");
+        if found.load(Ordering::Relaxed) >= program_envs.max_output_lines {
+            println!("... some more\n");
         } else {
-            println!("found {}", val);
+            println!("");
         }
     }
 
