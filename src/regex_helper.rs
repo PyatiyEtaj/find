@@ -10,8 +10,8 @@ impl RegexHelper {
         RegexHelper { regexes: vec![] }
     }
 
-    pub fn from_file(path: String) -> Result<RegexHelper, String> {
-        let file = match std::fs::File::open(&path) {
+    pub fn from_file<P: AsRef<str>>(path: P) -> Result<RegexHelper, String> {
+        let file = match std::fs::File::open(path.as_ref()) {
             Ok(f) => f,
             Err(err) => return Err(err.to_string()),
         };
@@ -29,8 +29,8 @@ impl RegexHelper {
         Ok(RegexHelper { regexes: regexes })
     }
 
-    pub fn from_string(pattern: &String) -> Result<RegexHelper, String> {
-        let r = match Regex::new(pattern) {
+    pub fn from_string<S: AsRef<str>>(pattern: S) -> Result<RegexHelper, String> {
+        let r = match Regex::new(pattern.as_ref()) {
             Ok(r) => r,
             Err(err) => return Err(err.to_string()),
         };
@@ -54,8 +54,7 @@ impl RegexHelper {
         let mut regexes = lines
             .iter()
             .map(|s| {
-                s
-                    .replace("**", "$$$")
+                s.replace("**", "$$$")
                     .replace("*", "[^/]*")
                     .replace(".", "\\.")
                     .replace("$$$", ".*")
@@ -69,19 +68,9 @@ impl RegexHelper {
         RegexHelper { regexes: regexes }
     }
 
-    pub fn check(&self, str: &String) -> bool {
+    pub fn check<S: AsRef<str>>(&self, str: S) -> bool {
         for r in &self.regexes {
-            if r.is_match(str) {
-                return true;
-            }
-        }
-
-        false
-    }
-
-    pub fn check_str(&self, str: &str) -> bool {
-        for r in &self.regexes {
-            if r.is_match(str) {
+            if r.is_match(str.as_ref()) {
                 return true;
             }
         }
@@ -100,13 +89,7 @@ mod ignore_files_tests {
 
     #[test]
     fn check_gitignore() {
-        let ignore = match RegexHelper::from_file(".gitignore".to_string()) {
-            Ok(i) => i,
-            Err(err) => {
-                assert_eq!(err, "".to_string());
-                return;
-            }
-        };
+        let ignore = RegexHelper::from_gitignore();
 
         assert!(ignore.check(&"haha/target".to_string()));
         assert!(ignore.check(&"hihi/target".to_string()));
@@ -117,7 +100,7 @@ mod ignore_files_tests {
 
     #[test]
     fn check_from_string() {
-        let ignore = match RegexHelper::from_string(&".*some".to_string()) {
+        let ignore = match RegexHelper::from_string(".*some") {
             Ok(i) => i,
             Err(err) => {
                 assert_eq!(err, "".to_string());

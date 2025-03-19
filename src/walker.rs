@@ -1,27 +1,19 @@
-use std::{fs, io, path::Path};
+use std::{fs, io};
 
 use crate::regex_helper::RegexHelper;
 
-struct Node {
-    current_path: String,
-    dirs: Vec<Node>,
-    files: Vec<String>
-}
-
-pub struct Walker {
-    start_point: Option<Node>,
-}
+pub struct Walker {}
 
 impl Walker {
     pub fn new() -> Walker {
-        Walker { start_point: None}
+        Walker {}
     }
 
     pub fn walk<F: Fn(&String), S: AsRef<str>>(
         &self,
         full_path: S,
-        on_find: &F,
-        ignore_helper: &RegexHelper,
+        on_file: &F,
+        ignore: &RegexHelper,
     ) -> io::Result<()> {
         let read_result = fs::read_dir(full_path.as_ref());
 
@@ -33,10 +25,10 @@ impl Walker {
             }
         };
 
-        let ignore = if ignore_helper.is_empty() {
+        let ignore = if ignore.is_empty() {
             &RegexHelper::from_gitignore()
         } else {
-            ignore_helper
+            ignore
         };
 
         for info_dir in dir {
@@ -63,9 +55,9 @@ impl Walker {
             }
 
             if file_type.is_file() {
-                on_find(full_path);
+                on_file(full_path);
             } else if file_type.is_dir() {
-                self.walk(full_path, on_find, ignore)?;
+                self.walk(full_path, on_file, ignore)?;
             }
         }
 
@@ -73,22 +65,30 @@ impl Walker {
     }
 }
 
-impl Iterator for Walker {
-    type Item = String;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        
-
-        None
-    }
-}
-
 #[cfg(test)]
 mod walker_tests {
+    use std::cell::RefCell;
+
+    use crate::regex_helper::RegexHelper;
+
     use super::Walker;
 
     #[test]
-    fn creation() {
+    fn simple_walk() {
         let walker = Walker::new();
+        let ignore = RegexHelper::from_gitignore();
+        let search = RegexHelper::from_string("main.rs").unwrap();
+        let has_been_found = RefCell::new(false);
+        _ = walker.walk(
+            ".",
+            &|name| {
+                if search.check(name) {
+                    has_been_found.replace(true);
+                }
+            },
+            &ignore,
+        );
+
+        assert!(has_been_found.take());
     }
 }
