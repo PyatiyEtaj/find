@@ -70,15 +70,14 @@ mod ignore_files_tests {
 
     #[test]
     fn check_gitignore() {
-        let path = "..";
-
-        let ignore = RegexHelper::from_gitignore(path);
+        let ignore = RegexHelper::from_gitignore(".");
 
         assert!(ignore.check(&"haha/target".to_string()));
         assert!(ignore.check(&"hihi/target".to_string()));
         assert!(ignore.check(&"/local_data".to_string()));
         assert!(ignore.check(&"123/local_data".to_string()));
         assert!(ignore.check(&"123/local_data/1234".to_string()));
+        assert!(!ignore.check(&"123/1234".to_string()));
     }
 
     #[test]
