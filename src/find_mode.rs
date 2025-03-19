@@ -17,6 +17,7 @@ impl FindMode {
     pub fn initialize_search<F: Fn(&String, bool)>(
         full_path: &String,
         on_find: &F,
+        ignore_helper: &RegexHelper,
     ) -> io::Result<()> {
         let read_result = fs::read_dir(full_path);
 
@@ -28,12 +29,10 @@ impl FindMode {
             }
         };
 
-        let ignore = match RegexHelper::from_file(".gitignore".to_string()){
-            Ok(mut s) => {
-                s.add_pattern(&"/.git".to_string()).unwrap();
-                Some(s)
-            },
-            Err(_) => None,
+        let ignore = if ignore_helper.is_empty() {
+            &RegexHelper::from_gitignore()
+        } else {
+            ignore_helper
         };
 
         for info_dir in dir {
@@ -53,12 +52,9 @@ impl FindMode {
             };
             let full_path = &format!("{full_path}/{file_name}");
 
-            let ignore_node = match ignore {
-                Some(ref s) => s.check(full_path),
-                None => false,
-            };
+            let ignore_node = ignore.check(full_path);
 
-            if ignore_node{
+            if ignore_node {
                 continue;
             }
 
@@ -66,7 +62,7 @@ impl FindMode {
                 on_find(full_path, false);
             } else if file_type.is_dir() {
                 on_find(full_path, true);
-                Self::initialize_search(full_path, on_find)?;
+                Self::initialize_search(full_path, on_find, ignore)?;
             }
         }
 
@@ -82,11 +78,17 @@ impl FindMode {
             }
         };
 
-        Self::initialize_search(&program_envs.start_path, &mut |node_name, _| {
-            if s.check(node_name) {
-                println!("{}", node_name);
-            };
-        })?;
+        let ignore = RegexHelper::new();
+
+        Self::initialize_search(
+            &program_envs.start_path,
+            &mut |node_name, _| {
+                if s.check(node_name) {
+                    println!("{}", node_name);
+                };
+            },
+            &ignore,
+        )?;
 
         Ok(())
     }
@@ -99,19 +101,25 @@ impl FindMode {
             }
         };
 
+        let ignore = RegexHelper::new();
+
         let arc_tf = Arc::new(Mutex::new(to_write));
 
-        let _ = Self::initialize_search(&program_envs.start_path, &mut |node_name, _| {
-            let write_state = arc_tf
-                .lock()
-                .unwrap()
-                .write_fmt(format_args!("{}\n", node_name));
+        let _ = Self::initialize_search(
+            &program_envs.start_path,
+            &mut |node_name, _| {
+                let write_state = arc_tf
+                    .lock()
+                    .unwrap()
+                    .write_fmt(format_args!("{}\n", node_name));
 
-            match write_state {
-                Ok(_) => {}
-                Err(err) => println!("[ERR] cant write err={}", err.to_string()),
-            }
-        });
+                match write_state {
+                    Ok(_) => {}
+                    Err(err) => println!("[ERR] cant write err={}", err.to_string()),
+                }
+            },
+            &ignore,
+        );
     }
 
     fn read_from_stdin() -> Option<String> {
