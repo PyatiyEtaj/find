@@ -1,6 +1,11 @@
 use std::cell::RefCell;
 
-use find::{envs::Envs, find_mode::FindMode, temp_file::{FindResult, TempFile}};
+use find::{
+    envs::Envs,
+    find_mode::FindMode,
+    regex_helper::RegexHelper,
+    temp_file::{FindResult, TempFile},
+};
 
 fn get_env_2() -> Vec<String> {
     vec![
@@ -11,19 +16,25 @@ fn get_env_2() -> Vec<String> {
 }
 
 #[test]
-fn search_pattern_test() {
+fn search_pattern() {
     let words = get_env_2();
 
     let env = Envs::new(&words);
     let has_been_found = RefCell::new(false);
+    let checker = RegexHelper::from_string(&env.pattern).unwrap();
+    let ignore = RegexHelper::new();
 
-    FindMode::initialize_search(&env.start_path, &mut |file, is_dir| {
-        if file.contains(&env.pattern) {
-            assert_eq!(*file, r"./src/main.rs".to_string());
-            assert_eq!(is_dir, false);
-            has_been_found.replace(true);
-        };
-    })
+    FindMode::initialize_search(
+        &env.start_path,
+        &mut |file, is_dir| {
+            if checker.check(file) {
+                assert_eq!(*file, r"./src/main.rs".to_string());
+                assert_eq!(is_dir, false);
+                has_been_found.replace(true);
+            };
+        },
+        &ignore,
+    )
     .unwrap();
 
     assert!(has_been_found.take())
@@ -37,7 +48,7 @@ fn get_env_3() -> Vec<String> {
 }
 
 #[test]
-fn temp_file_test() {
+fn temp_file_find() {
     let words = get_env_3();
     let env = Envs::new(&words);
 
