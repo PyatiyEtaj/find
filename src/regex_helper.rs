@@ -54,11 +54,12 @@ impl RegexHelper {
         let mut regexes = lines
             .iter()
             .map(|s| {
-                s.replace("**", "")
-                    .replace("*", "")
-                    .replace("/", "")
-                    .replace("\\", "")
+                s
+                    .replace("**", "$$$")
+                    .replace("*", "[^/]*")
                     .replace(".", "\\.")
+                    .replace("$$$", ".*")
+                    .replace("?", ".")
             })
             .filter_map(|p| regex::Regex::new(&p).ok())
             .collect::<Vec<Regex>>();
