@@ -1,15 +1,12 @@
 use regex::Regex;
 use std::io::BufRead;
 
+#[derive(Default)]
 pub struct RegexHelper {
     regexes: Vec<Regex>,
 }
 
 impl RegexHelper {
-    pub fn new() -> RegexHelper {
-        RegexHelper { regexes: vec![] }
-    }
-
     pub fn from_string<S: AsRef<str>>(pattern: S) -> Result<RegexHelper, String> {
         let r = match Regex::new(pattern.as_ref()) {
             Ok(r) => r,
@@ -24,7 +21,7 @@ impl RegexHelper {
 
         let file = match std::fs::File::open(&path) {
             Ok(f) => f,
-            Err(_) => return RegexHelper::new(),
+            Err(_) => return RegexHelper::default(),
         };
 
         let lines = std::io::BufReader::new(file)
@@ -46,7 +43,7 @@ impl RegexHelper {
 
         regexes.push(Regex::new(".git").unwrap());
 
-        RegexHelper { regexes: regexes }
+        RegexHelper { regexes }
     }
 
     pub fn check<S: AsRef<str>>(&self, str: S) -> bool {
@@ -72,12 +69,12 @@ mod ignore_files_tests {
     fn check_gitignore() {
         let ignore = RegexHelper::from_gitignore(".");
 
-        assert!(ignore.check(&"haha/target".to_string()));
-        assert!(ignore.check(&"hihi/target".to_string()));
-        assert!(ignore.check(&"/local_data".to_string()));
-        assert!(ignore.check(&"123/local_data".to_string()));
-        assert!(ignore.check(&"123/local_data/1234".to_string()));
-        assert!(!ignore.check(&"123/1234".to_string()));
+        assert!(ignore.check("haha/target"));
+        assert!(ignore.check("hihi/target"));
+        assert!(ignore.check("/local_data"));
+        assert!(ignore.check("123/local_data"));
+        assert!(ignore.check("123/local_data/1234"));
+        assert!(!ignore.check("123/1234"));
     }
 
     #[test]
@@ -85,13 +82,13 @@ mod ignore_files_tests {
         let ignore = match RegexHelper::from_string(".*some") {
             Ok(i) => i,
             Err(err) => {
-                assert_eq!(err, "".to_string());
+                assert_eq!(err, "");
                 return;
             }
         };
 
-        assert!(ignore.check(&"haha/some".to_string()));
-        assert!(ignore.check(&"asdgoasogaosomesome".to_string()));
-        assert!(!ignore.check(&"soahasme".to_string()));
+        assert!(ignore.check("haha/some"));
+        assert!(ignore.check("asdgoasogaosomesome"));
+        assert!(!ignore.check("soahasme"));
     }
 }

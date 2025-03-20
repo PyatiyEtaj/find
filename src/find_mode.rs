@@ -22,11 +22,9 @@ impl FindMode {
             }
         };
 
-        let ignore = RegexHelper::new();
+        let ignore = RegexHelper::default();
 
-        let walker = Walker::new();
-
-        walker.walk(
+        Walker::walk(
             &program_envs.start_path,
             &|node_name| {
                 if s.check(node_name) {
@@ -47,13 +45,11 @@ impl FindMode {
             }
         };
 
-        let ignore = RegexHelper::new();
+        let ignore = RegexHelper::default();
 
         let arc_tf = Arc::new(Mutex::new(to_write));
 
-        let walker = Walker::new();
-
-        let _ = walker.walk(
+        let _ = Walker::walk(
             &program_envs.start_path,
             &|node_name| {
                 let write_state = arc_tf
@@ -63,7 +59,7 @@ impl FindMode {
 
                 match write_state {
                     Ok(_) => {}
-                    Err(err) => println!("[ERR] cant write err={}", err.to_string()),
+                    Err(err) => println!("[ERR] cant write err={}", err),
                 }
             },
             &ignore,
@@ -87,7 +83,7 @@ impl FindMode {
         let search = AtomicBool::new(true);
         let found = AtomicI32::new(0);
         while search.load(Ordering::Relaxed) {
-            let find_result = tf.find(&pattern, &|f| {
+            let find_result = tf.find(pattern, &|f| {
                 let prev = found.fetch_add(1, Ordering::Relaxed);
                 if program_envs.max_output_lines < 0
                     || found.load(Ordering::Relaxed) <= program_envs.max_output_lines
@@ -101,7 +97,7 @@ impl FindMode {
             }
 
             match find_result {
-                FindResult::Error(err) => println!("[ERR] cant read; err={}", err.to_string()),
+                FindResult::Error(err) => println!("[ERR] cant read; err={}", err),
                 FindResult::Read => {}
                 FindResult::Eof => {
                     search.store(false, Ordering::Relaxed);
@@ -112,7 +108,7 @@ impl FindMode {
         if found.load(Ordering::Relaxed) >= program_envs.max_output_lines {
             println!("... some more\n");
         } else {
-            println!("");
+            println!();
         }
     }
 
@@ -133,12 +129,7 @@ impl FindMode {
             start.elapsed().as_millis()
         );
 
-        loop {
-            let pattern = match Self::read_from_stdin() {
-                Some(p) => p,
-                None => break,
-            };
-
+        while let Some(pattern) = Self::read_from_stdin() {
             Self::interactive_find_pattern(&mut tf, &pattern, &program_envs);
         }
 

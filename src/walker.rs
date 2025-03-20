@@ -2,15 +2,11 @@ use std::{fs, io};
 
 use crate::regex_helper::RegexHelper;
 
+#[derive(Default)]
 pub struct Walker {}
 
 impl Walker {
-    pub fn new() -> Walker {
-        Walker {}
-    }
-
     pub fn walk<F: Fn(&String), S: AsRef<str>>(
-        &self,
         full_path: S,
         on_file: &F,
         ignore: &RegexHelper,
@@ -58,7 +54,7 @@ impl Walker {
             if file_type.is_file() {
                 on_file(full_path);
             } else if file_type.is_dir() {
-                self.walk(full_path, on_file, ignore)?;
+                Self::walk(full_path, on_file, ignore)?;
             }
         }
 
@@ -76,11 +72,10 @@ mod walker_tests {
 
     #[test]
     fn simple_walk() {
-        let walker = Walker::new();
-        let ignore = RegexHelper::new();
+        let ignore = RegexHelper::default();
         let search = RegexHelper::from_string("main.rs").unwrap();
         let has_been_found = RefCell::new(false);
-        _ = walker.walk(
+        _ = Walker::walk(
             "..",
             &|name| {
                 if search.check(name) {

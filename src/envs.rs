@@ -6,7 +6,7 @@ pub struct Envs {
 }
 
 impl Envs {
-    pub fn new(words: &Vec<String>) -> Envs {
+    pub fn new(words: &[String]) -> Envs {
         let mut result = Envs {
             interactive: false,
             max_output_lines: 10,
@@ -14,22 +14,23 @@ impl Envs {
             start_path: ".".to_string(),
         };
 
-        for i in 1..words.len() {
-            if words[i].starts_with("--line=") {
-                result.max_output_lines = match words[i]["--line=".len()..].parse::<i32>() {
-                    Ok(value) => value,
-                    Err(_) => 10,
-                };
-            } else if words[i].starts_with("--path=") {
-                result.start_path = String::from(&words[i]["--path=".len()..]);
+        for i in words.iter().skip(1) {
+            if i.starts_with("--line=") {
+                if let Some(stripped) = i.strip_prefix("--line=") {
+                    result.max_output_lines = stripped.parse::<i32>().unwrap_or(10);
+                }
+            } else if i.starts_with("--path=") {
+                if let Some(stripped) = i.strip_prefix("--path="){
+                    result.start_path = stripped.to_string();
+                } 
             } else {
-                result.pattern.push_str(words[i].as_str());
-                result.pattern.push_str(" ");
+                result.pattern.push_str(i.as_str());
+                result.pattern.push(' ');
             }
         }
         result.pattern = String::from(result.pattern.trim());
 
-        if result.pattern.len() < 1 {
+        if result.pattern.is_empty() {
             result.interactive = true;
         }
 
@@ -58,7 +59,7 @@ mod envs_tests {
 
         assert_eq!(env.pattern, "'some pattern .*".to_string());
         assert_eq!(env.start_path, r".\some\dir".to_string());
-        assert_eq!(env.interactive, false);
+        assert!(!env.interactive);
         assert_eq!(env.max_output_lines, 11);
     }
 }

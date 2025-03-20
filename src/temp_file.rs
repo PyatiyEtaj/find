@@ -53,7 +53,7 @@ impl TempFile {
         self.read_seek = 0;
     }
 
-    pub fn find<F: Fn(&String)>(&mut self, pattern: &String, on_find: &F) -> FindResult {
+    pub fn find<F: Fn(&String), S: AsRef<str>>(&mut self, pattern: S, on_find: &F) -> FindResult {
         match self.read.seek(io::SeekFrom::Start(self.read_seek)) {
             Ok(_) => {}
             Err(err) => return FindResult::Error(err.to_string()),
@@ -96,7 +96,7 @@ impl TempFile {
             last = s;
         }
 
-        if last.len() > 0 && !last.ends_with('\0') && !last.ends_with('\n') {
+        if !last.is_empty() && !last.ends_with('\0') && !last.ends_with('\n') {
             self.read_seek -= last.len() as u64;
         }
 

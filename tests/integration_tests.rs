@@ -23,12 +23,9 @@ fn search_pattern() {
     let env = Envs::new(&words);
     let has_been_found = RefCell::new(false);
     let checker = RegexHelper::from_string(&env.pattern).unwrap();
-    let ignore = RegexHelper::new();
+    let ignore = RegexHelper::default();
 
-    let walker = Walker::new();
-
-    walker
-        .walk(
+    Walker::walk(
             env.start_path,
             &|file| {
                 if checker.check(file) {
@@ -68,7 +65,7 @@ fn temp_file_find() {
     let has_been_found = RefCell::new(false);
 
     loop {
-        let find_result = file.find(&"Cargo.lock".to_string(), &|_| {
+        let find_result = file.find("Cargo.lock", &|_| {
             has_been_found.replace(true);
         });
 
