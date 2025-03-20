@@ -1,5 +1,5 @@
-use find::envs::Envs;
-use find::find_mode::FindMode;
+use rfind::envs::Envs;
+use rfind::find_mode::FindMode;
 use std::io;
 
 fn main() -> io::Result<()> {

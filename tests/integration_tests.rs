@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 
-use find::{
+use rfind::{
     envs::Envs,
     find_mode::FindMode,
     regex_helper::RegexHelper,
