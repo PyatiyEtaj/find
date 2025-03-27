@@ -1,3 +1,5 @@
+use std::env;
+
 pub struct Envs {
     pub pattern: String,
     pub max_output_lines: i32,
@@ -11,7 +13,7 @@ impl Envs {
             interactive: false,
             max_output_lines: 10,
             pattern: String::new(),
-            start_path: ".".to_string(),
+            start_path: env::current_dir().unwrap().to_str().unwrap().to_string().replace(r"\", "/"),
         };
 
         for i in words.iter().skip(1) {
@@ -19,10 +21,10 @@ impl Envs {
                 if let Some(stripped) = i.strip_prefix("--line=") {
                     result.max_output_lines = stripped.parse::<i32>().unwrap_or(10);
                 }
-            } else if i.starts_with("--path=") {
-                if let Some(stripped) = i.strip_prefix("--path="){
+            } else if i.starts_with("-p") {
+                if let Some(stripped) = i.strip_prefix("-p=") {
                     result.start_path = stripped.to_string();
-                } 
+                }
             } else {
                 result.pattern.push_str(i.as_str());
                 result.pattern.push(' ');
