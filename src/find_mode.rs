@@ -1,5 +1,5 @@
 use std::{
-    io::{self, Write},
+    io::{self, BufWriter, Write},
     sync::{
         atomic::{AtomicBool, AtomicI32, Ordering},
         Arc, Mutex,
@@ -47,7 +47,7 @@ impl FindMode {
 
         let ignore = RegexHelper::default();
 
-        let arc_tf = Arc::new(Mutex::new(to_write));
+        let arc_tf = Arc::new(Mutex::new(BufWriter::new(to_write)));
 
         let _ = Walker::walk(
             &program_envs.start_path,
@@ -64,6 +64,8 @@ impl FindMode {
             },
             &ignore,
         );
+
+        _ = arc_tf.lock().unwrap().flush();
     }
 
     fn read_from_stdin() -> Option<String> {
@@ -123,6 +125,63 @@ impl FindMode {
 
         let start = std::time::Instant::now();
         FindMode::interactive_init(&tf, &program_envs);
+        println!(
+            "temp file: {} / took {} ms",
+            tf.name,
+            start.elapsed().as_millis()
+        );
+
+        while let Some(pattern) = Self::read_from_stdin() {
+            Self::interactive_find_pattern(&mut tf, &pattern, &program_envs);
+        }
+
+        Ok(())
+    }
+}
+
+impl FindMode{
+    pub async fn interactive_init_async(tf: &TempFile, program_envs: &Envs) {
+        let to_write = match &tf.write {
+            Some(write_f) => write_f,
+            None => {
+                return;
+            }
+        };
+
+        let ignore = RegexHelper::default();
+
+        let arc_tf = Arc::new(Mutex::new(BufWriter::new(to_write)));
+
+        let _ = Walker::walk_async(
+            &program_envs.start_path,
+            &|node_name| {
+                let write_state = arc_tf
+                    .lock()
+                    .unwrap()
+                    .write_fmt(format_args!("{}\n", node_name));
+
+                match write_state {
+                    Ok(_) => {}
+                    Err(err) => println!("[ERR] cant write err={}", err),
+                }
+            },
+            &ignore,
+        ).await;
+    }
+
+    pub async fn interactive_async(program_envs: Envs) -> io::Result<()> {
+        let mut tf = match TempFile::new() {
+            Ok(f) => f,
+            Err(err) => {
+                println!("[ERR] {}", err);
+                return Ok(());
+            }
+        };
+
+        let start = std::time::Instant::now();
+
+        FindMode::interactive_init_async(&tf, &program_envs).await;
+
         println!(
             "temp file: {} / took {} ms",
             tf.name,

@@ -60,6 +60,56 @@ impl Walker {
 
         Ok(())
     }
+
+    pub async fn walk_async<F: Fn(&String), S: AsRef<str>>(
+        full_path: S,
+        on_file: &F,
+        ignore: &RegexHelper,
+    ) -> io::Result<()> {
+        let read_result = tokio::fs::read_dir(full_path.as_ref()).await;
+
+        let mut dir = match read_result {
+            Ok(dir) => dir,
+            Err(msg) => {
+                println!("[ERR] {:?} err={:?}", full_path.as_ref(), msg);
+                return Ok(());
+            }
+        };
+
+        let ignore = if ignore.is_empty() {
+            &RegexHelper::from_gitignore(&full_path)
+        } else {
+            ignore
+        };
+
+        while let Ok(Some(information)) = dir.next_entry().await {
+            let file_type = match information.file_type().await {
+                Ok(file_type) => file_type,
+                Err(_) => continue,
+            };
+
+            let file_name = match information.file_name().into_string() {
+                Ok(n) => n,
+                Err(_) => continue,
+            };
+
+            let full_path = &format!("{}/{}", full_path.as_ref(), file_name);
+
+            let ignore_node = ignore.check(full_path);
+
+            if ignore_node {
+                continue;
+            }
+
+            if file_type.is_file() {
+                on_file(full_path);
+            } else if file_type.is_dir() {
+                Box::pin(Self::walk_async(full_path, on_file, ignore)).await?;
+            }
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -84,6 +134,25 @@ mod walker_tests {
             },
             &ignore,
         );
+
+        assert!(has_been_found.take());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn walk_async() {
+        let ignore = RegexHelper::default();
+        let search = RegexHelper::from_string("main.rs").unwrap();
+        let has_been_found = RefCell::new(false);
+        _ = Walker::walk_async(
+            "..",
+            &|name| {
+                if search.check(name) {
+                    has_been_found.replace(true);
+                }
+            },
+            &ignore,
+        )
+        .await;
 
         assert!(has_been_found.take());
     }
