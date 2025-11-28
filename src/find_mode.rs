@@ -99,7 +99,10 @@ impl FindMode {
             }
 
             match find_result {
-                FindResult::Error(err) => println!("[ERR] cant read; err={}", err),
+                FindResult::Error(err) => {
+                    println!("[ERR] {}", err);
+                    search.store(false, Ordering::Relaxed);
+                },
                 FindResult::Read => {}
                 FindResult::Eof => {
                     search.store(false, Ordering::Relaxed);
