@@ -11,15 +11,15 @@ impl Envs {
     pub fn new(words: &[String]) -> Envs {
         let mut result = Envs {
             interactive: false,
-            max_output_lines: 10,
+            max_output_lines: 20,
             pattern: String::new(),
             start_path: env::current_dir().unwrap().to_str().unwrap().to_string().replace(r"\", "/"),
         };
 
         for i in words.iter().skip(1) {
-            if i.starts_with("--line=") {
-                if let Some(stripped) = i.strip_prefix("--line=") {
-                    result.max_output_lines = stripped.parse::<i32>().unwrap_or(10);
+            if i.starts_with("-l=") {
+                if let Some(stripped) = i.strip_prefix("-l=") {
+                    result.max_output_lines = stripped.parse::<i32>().unwrap_or(20);
                 }
             } else if i.starts_with("-p") {
                 if let Some(stripped) = i.strip_prefix("-p=") {

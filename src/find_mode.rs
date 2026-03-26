@@ -73,7 +73,8 @@ impl FindMode {
         std::io::stdout().flush().unwrap();
         let mut pattern = String::new();
         std::io::stdin().read_line(&mut pattern).unwrap();
-        if pattern.starts_with("q") || pattern.starts_with("quit") || pattern.starts_with("exit") {
+        if pattern.starts_with("[q")
+        {
             return None;
         }
 
@@ -102,7 +103,7 @@ impl FindMode {
                 FindResult::Error(err) => {
                     println!("[ERR] {}", err);
                     search.store(false, Ordering::Relaxed);
-                },
+                }
                 FindResult::Read => {}
                 FindResult::Eof => {
                     search.store(false, Ordering::Relaxed);
@@ -110,7 +111,7 @@ impl FindMode {
             }
         }
 
-        if found.load(Ordering::Relaxed) >= program_envs.max_output_lines {
+        if program_envs.max_output_lines > 0 && found.load(Ordering::Relaxed) >= program_envs.max_output_lines {
             println!("... some more\n");
         } else {
             println!();
@@ -129,7 +130,7 @@ impl FindMode {
         let start = std::time::Instant::now();
         FindMode::interactive_init(&tf, &program_envs);
         println!(
-            "temp file: {} / took {} ms",
+            "temp file: {} / took {} ms / to exit type '[q'",
             tf.name,
             start.elapsed().as_millis()
         );
@@ -142,7 +143,7 @@ impl FindMode {
     }
 }
 
-impl FindMode{
+impl FindMode {
     pub async fn interactive_init_async(tf: &TempFile, program_envs: &Envs) {
         let to_write = match &tf.write {
             Some(write_f) => write_f,
@@ -169,7 +170,8 @@ impl FindMode{
                 }
             },
             &ignore,
-        ).await;
+        )
+        .await;
     }
 
     pub async fn interactive_async(program_envs: Envs) -> io::Result<()> {
@@ -186,7 +188,7 @@ impl FindMode{
         FindMode::interactive_init_async(&tf, &program_envs).await;
 
         println!(
-            "temp file: {} / took {} ms",
+            "temp file: {} / took {} ms / to exit type '[q'",
             tf.name,
             start.elapsed().as_millis()
         );
