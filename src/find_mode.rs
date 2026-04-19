@@ -6,6 +6,11 @@ use std::{
     },
 };
 
+use crossterm::{
+    event::{read, Event, KeyCode, KeyEventKind},
+    terminal::{disable_raw_mode, enable_raw_mode},
+};
+
 use crate::{envs::Envs, regex_helper::RegexHelper, temp_file, walker::Walker};
 
 use temp_file::{FindResult, TempFile};
@@ -72,13 +77,45 @@ impl FindMode {
         print!("> ");
         std::io::stdout().flush().unwrap();
         let mut pattern = String::new();
-        std::io::stdin().read_line(&mut pattern).unwrap();
-        if pattern.starts_with("[q")
-        {
-            return None;
-        }
 
-        Some(pattern.trim().to_string())
+        enable_raw_mode().unwrap();
+
+        loop {
+            match read() {
+                Ok(Event::Key(key_event)) if key_event.kind == KeyEventKind::Press => {
+                    match key_event.code {
+                        KeyCode::Esc => {
+                            disable_raw_mode().unwrap();
+                            println!();
+                            return None;
+                        }
+                        KeyCode::Enter => {
+                            disable_raw_mode().unwrap();
+                            println!();
+                            return Some(pattern.trim().to_string());
+                        }
+                        KeyCode::Backspace => {
+                            if pattern.pop().is_some() {
+                                print!("\u{8} \u{8}");
+                                std::io::stdout().flush().unwrap();
+                            }
+                        }
+                        KeyCode::Char(c) => {
+                            pattern.push(c);
+                            print!("{}", c);
+                            std::io::stdout().flush().unwrap();
+                        }
+                        _ => {}
+                    }
+                }
+                Ok(_) => {}
+                Err(_) => {
+                    disable_raw_mode().unwrap();
+                    println!();
+                    return None;
+                }
+            }
+        }
     }
 
     pub fn interactive_find_pattern(tf: &mut TempFile, pattern: &String, program_envs: &Envs) {
@@ -130,7 +167,7 @@ impl FindMode {
         let start = std::time::Instant::now();
         FindMode::interactive_init(&tf, &program_envs);
         println!(
-            "temp file: {} / took {} ms / to exit type '[q'",
+            "temp file: {} / took {} ms / press Esc to exit",
             tf.name,
             start.elapsed().as_millis()
         );
@@ -188,7 +225,7 @@ impl FindMode {
         FindMode::interactive_init_async(&tf, &program_envs).await;
 
         println!(
-            "temp file: {} / took {} ms / to exit type '[q'",
+            "temp file: {} / took {} ms / press Esc to exit",
             tf.name,
             start.elapsed().as_millis()
         );
