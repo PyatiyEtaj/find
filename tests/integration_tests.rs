@@ -12,7 +12,7 @@ fn get_env_2() -> Vec<String> {
     vec![
         r".\projects\file\file\target\release\file.exe".to_string(),
         r"main.rs".to_string(),
-        r"--path=.".to_string(),
+        r"-p=.".to_string(),
     ]
 }
 

@@ -47,9 +47,9 @@ mod envs_tests {
     fn get_env_1() -> Vec<String> {
         vec![
             r".\projects\file\file\target\release\file.exe".to_string(),
-            r"'some pattern .*".to_string(),
-            r"--path=.\some\dir".to_string(),
-            r"--line=11".to_string(),
+            r"'some pattern .*'".to_string(),
+            r"-p=.\some\dir".to_string(),
+            r"-l=11".to_string(),
         ]
     }
 
@@ -59,7 +59,7 @@ mod envs_tests {
 
         let env = Envs::new(&words);
 
-        assert_eq!(env.pattern, "'some pattern .*".to_string());
+        assert_eq!(env.pattern, "'some pattern .*'".to_string());
         assert_eq!(env.start_path, r".\some\dir".to_string());
         assert!(!env.interactive);
         assert_eq!(env.max_output_lines, 11);
