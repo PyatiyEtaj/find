@@ -38,6 +38,7 @@ impl RegexHelper {
                     .replace("$$$", ".*")
                     .replace("?", ".")
             })
+            .filter(|p| p.len() > 1)
             .filter_map(|p| regex::Regex::new(&p).ok())
             .collect::<Vec<Regex>>();
 

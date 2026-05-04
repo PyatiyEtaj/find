@@ -16,7 +16,7 @@ impl Walker {
         let dir = match read_result {
             Ok(dir) => dir,
             Err(msg) => {
-                println!("[ERR] {:?} err={:?}", full_path.as_ref(), msg);
+                eprintln!("[ERR] {:?} err={:?}", full_path.as_ref(), msg);
                 return Ok(());
             }
         };
@@ -71,7 +71,7 @@ impl Walker {
         let mut dir = match read_result {
             Ok(dir) => dir,
             Err(msg) => {
-                println!("[ERR] {:?} err={:?}", full_path.as_ref(), msg);
+                eprintln!("[ERR] {:?} err={:?}", full_path.as_ref(), msg);
                 return Ok(());
             }
         };

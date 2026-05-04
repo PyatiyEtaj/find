@@ -1,9 +1,6 @@
 use std::{
     io::{self, BufWriter, Write},
-    sync::{
-        atomic::{AtomicBool, AtomicI32, Ordering},
-        Arc, Mutex,
-    },
+    sync::{Arc, Mutex},
 };
 
 use crossterm::{
@@ -13,7 +10,7 @@ use crossterm::{
 
 use crate::{envs::Envs, regex_helper::RegexHelper, temp_file, walker::Walker};
 
-use temp_file::{FindResult, TempFile};
+use temp_file::TempFile;
 
 pub struct FindMode {}
 
@@ -22,7 +19,7 @@ impl FindMode {
         let s = match RegexHelper::from_string(&program_envs.pattern) {
             Ok(s) => s,
             Err(err) => {
-                println!("[ERR] err={}", err);
+                eprintln!("[ERR] err={}", err);
                 return Ok(());
             }
         };
@@ -64,7 +61,7 @@ impl FindMode {
 
                 match write_state {
                     Ok(_) => {}
-                    Err(err) => println!("[ERR] cant write err={}", err),
+                    Err(err) => eprintln!("[ERR] cant write err={}", err),
                 }
             },
             &ignore,
@@ -120,35 +117,42 @@ impl FindMode {
 
     pub fn interactive_find_pattern(tf: &mut TempFile, pattern: &String, program_envs: &Envs) {
         tf.refresh();
-        let search = AtomicBool::new(true);
-        let found = AtomicI32::new(0);
-        while search.load(Ordering::Relaxed) {
-            let find_result = tf.find(pattern, &|f| {
-                let prev = found.fetch_add(1, Ordering::Relaxed);
-                if program_envs.max_output_lines < 0
-                    || found.load(Ordering::Relaxed) <= program_envs.max_output_lines
-                {
-                    println!("{}) {}", prev + 1, f);
-                }
-            });
 
-            if found.load(Ordering::Relaxed) >= program_envs.max_output_lines {
-                search.store(false, Ordering::Relaxed);
+        let searcher = match RegexHelper::from_string(pattern) {
+            Ok(s) => s,
+            Err(err) => {
+                eprintln!("[ERR] {}", err);
+                return;
             }
+        };
 
-            match find_result {
-                FindResult::Error(err) => {
-                    println!("[ERR] {}", err);
-                    search.store(false, Ordering::Relaxed);
+        let buf = tf.as_raw().unwrap();
+        let mut count = 0;
+        let mut at = 0;
+        let mut done = false;
+        while !done && (program_envs.max_output_lines < 0 || count <= program_envs.max_output_lines)
+        {
+            let line = match memchr::memchr(b'\n', &buf[at..]) {
+                Some(p) => {
+                    let line = &buf[at..at+p];
+                    at += p + 1;
+                    line
                 }
-                FindResult::Read => {}
-                FindResult::Eof => {
-                    search.store(false, Ordering::Relaxed);
+                None => {
+                    done = true;
+                    let line = &buf[at..];
+                    line
                 }
+            };
+
+            let s = unsafe { str::from_utf8_unchecked(line) };
+            if searcher.check(s) {
+                count += 1;
+                println!("{}) {}", count, s);
             }
         }
 
-        if program_envs.max_output_lines > 0 && found.load(Ordering::Relaxed) >= program_envs.max_output_lines {
+        if program_envs.max_output_lines > 0 && count >= program_envs.max_output_lines {
             println!("... some more\n");
         } else {
             println!();
@@ -159,7 +163,7 @@ impl FindMode {
         let mut tf = match TempFile::new() {
             Ok(f) => f,
             Err(err) => {
-                println!("[ERR] {}", err);
+                eprintln!("[ERR] {}", err);
                 return Ok(());
             }
         };
@@ -203,7 +207,7 @@ impl FindMode {
 
                 match write_state {
                     Ok(_) => {}
-                    Err(err) => println!("[ERR] cant write err={}", err),
+                    Err(err) => eprintln!("[ERR] cant write err={}", err),
                 }
             },
             &ignore,
@@ -215,7 +219,7 @@ impl FindMode {
         let mut tf = match TempFile::new() {
             Ok(f) => f,
             Err(err) => {
-                println!("[ERR] {}", err);
+                eprintln!("[ERR] {}", err);
                 return Ok(());
             }
         };
