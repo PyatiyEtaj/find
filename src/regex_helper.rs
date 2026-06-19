@@ -1,9 +1,14 @@
 use regex::Regex;
-use std::io::BufRead;
+use std::{io::BufRead, ops::Index};
 
-#[derive(Default)]
 pub struct RegexHelper {
     regexes: Vec<Regex>,
+}
+
+impl Default for RegexHelper {
+    fn default() -> Self {
+        Self { regexes: vec![Regex::new("/node_modules").unwrap()] }
+    }
 }
 
 impl RegexHelper {
@@ -43,6 +48,9 @@ impl RegexHelper {
             .collect::<Vec<Regex>>();
 
         regexes.push(Regex::new(".git").unwrap());
+        if regexes.iter().find(|x| x.as_str().contains("node_modules")).is_none() {
+            regexes.push(Regex::new("/node_modules").unwrap());
+        }
 
         RegexHelper { regexes }
     }

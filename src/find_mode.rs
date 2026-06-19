@@ -1,6 +1,10 @@
 use std::{
+    env,
+    f32::consts::PI,
+    fs::File,
     io::{self, BufWriter, Write},
     sync::{Arc, Mutex},
+    thread,
 };
 
 use crossterm::{
@@ -39,35 +43,35 @@ impl FindMode {
         Ok(())
     }
 
-    pub fn interactive_init(tf: &TempFile, program_envs: &Envs) {
-        let to_write = match &tf.write {
-            Some(write_f) => write_f,
-            None => {
-                return;
-            }
-        };
+    fn interactive_init(tf: BufWriter<File>, program_envs: &Envs) {
+        let arc_tf = Arc::new(Mutex::new(tf));
 
-        let ignore = RegexHelper::default();
+        let (send, receive) = flume::unbounded::<String>();
 
-        let arc_tf = Arc::new(Mutex::new(BufWriter::new(to_write)));
+        let path = program_envs.start_path.clone();
 
-        let _ = Walker::walk(
-            &program_envs.start_path,
-            &|node_name| {
-                let write_state = arc_tf
-                    .lock()
-                    .unwrap()
-                    .write_fmt(format_args!("{}\n", node_name));
+        const END_TOK: &str = ":END";
 
-                match write_state {
-                    Ok(_) => {}
-                    Err(err) => eprintln!("[ERR] cant write err={}", err),
+        let walker_th = thread::spawn(move || {
+            _ = Walker::walk_by_channel(&send, path, &RegexHelper::default());
+            _ = send.send(END_TOK.to_string());
+        });
+
+        let writer_th = thread::spawn(move || {
+            while let Ok(path) = &receive.recv() {
+                if path == END_TOK {
+                    println!("[FS HAS BEEN SCANNED]");
+                    break;
                 }
-            },
-            &ignore,
-        );
 
-        _ = arc_tf.lock().unwrap().flush();
+                let write_state = arc_tf.lock().unwrap().write_fmt(format_args!("{}\n", path));
+
+                if let Err(e) = write_state {
+                    eprintln!("[ERR] cant write err={}", e);
+                }
+            }
+            _ = arc_tf.lock().unwrap().flush();
+        });
     }
 
     fn read_from_stdin() -> Option<String> {
@@ -134,7 +138,7 @@ impl FindMode {
         {
             let line = match memchr::memchr(b'\n', &buf[at..]) {
                 Some(p) => {
-                    let line = &buf[at..at+p];
+                    let line = &buf[at..at + p];
                     at += p + 1;
                     line
                 }
@@ -168,13 +172,10 @@ impl FindMode {
             }
         };
 
-        let start = std::time::Instant::now();
-        FindMode::interactive_init(&tf, &program_envs);
-        println!(
-            "temp file: {} / took {} ms / press Esc to exit",
-            tf.name,
-            start.elapsed().as_millis()
-        );
+        let f = tf.write.take().unwrap();
+        let bw = BufWriter::new(f);
+        FindMode::interactive_init(bw, &program_envs);
+        println!("temp file: {} / press Esc to exit", tf.name);
 
         while let Some(pattern) = Self::read_from_stdin() {
             Self::interactive_find_pattern(&mut tf, &pattern, &program_envs);

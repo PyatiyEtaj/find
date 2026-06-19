@@ -11,3 +11,4 @@ tokio = {version="1.44.2", features=["fs", "rt", "macros"]}
 crossterm = "0.28.1"
 memmap2 = "0.9.10"
 memchr = "2.8.0"
+flume = "0.12.0"

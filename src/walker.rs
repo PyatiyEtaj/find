@@ -61,6 +61,49 @@ impl Walker {
         Ok(())
     }
 
+    pub fn walk_by_channel<S: AsRef<str>>(
+        channel: &flume::Sender<String>,
+        full_path: S,
+        ignore: &RegexHelper,
+    ) -> io::Result<()> {
+        let dir = fs::read_dir(full_path.as_ref())?;
+
+        let ignore = if ignore.is_empty() {
+            &RegexHelper::from_gitignore(&full_path)
+        } else {
+            ignore
+        };
+
+        for info_dir in dir {
+            let information = match info_dir {
+                Ok(information) => information,
+                Err(_) => continue,
+            };
+
+            let Ok(file_type) = information.file_type() else {
+                continue;
+            };
+
+            let Ok(file_name) = information.file_name().into_string() else {
+                continue;
+            };
+
+            let full_path = format!("{}/{}", full_path.as_ref(), file_name);
+
+            if ignore.check(&full_path) {
+                continue;
+            }
+
+            if file_type.is_file() {
+                _ = channel.send(full_path);
+            } else if file_type.is_dir() {
+                Self::walk_by_channel(channel, full_path, ignore)?;
+            }
+        }
+
+        Ok(())
+    }
+
     pub async fn walk_async<F: Fn(&String), S: AsRef<str>>(
         full_path: S,
         on_file: &F,
